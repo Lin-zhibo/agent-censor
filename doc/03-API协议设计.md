@@ -120,8 +120,45 @@
       "end": 6
     }
   ],
-  "model_results": [],
-  "rule_results": [],
+  "model_results": [
+    {
+      "model_name": "text_safety_v1",
+      "model_version": "2026-06",
+      "modality": "text",
+      "labels": [
+        {
+          "label": "political_sensitive",
+          "sub_label": "political_symbol",
+          "score": 0.82,
+          "normalized_score": 0.82
+        }
+      ],
+      "evidence": [
+        {
+          "evidence_id": "ev_text_001",
+          "type": "text_span",
+          "content": "命中证据片段"
+        }
+      ],
+      "latency_ms": 420,
+      "status": "success",
+      "error": null
+    }
+  ],
+  "rule_results": [
+    {
+      "rule_id": "rule_sensitive_word_001",
+      "version": "v1",
+      "label": "political_sensitive",
+      "condition_type": "model_score",
+      "threshold": 0.8,
+      "observed_value": 0.82,
+      "matched": true,
+      "action": "review",
+      "evidence_refs": ["ev_text_001"],
+      "reason": "模型 political_sensitive 分数 0.82 超过阈值 0.8"
+    }
+  ],
   "suggested_action": "manual_review",
   "explanation": "规则和模型均提示存在政治敏感风险，建议人工复核。"
 }
@@ -217,3 +254,243 @@ Graph RAG 检索结果必须能支持：
 - 相似度或置信度：用于排序和解释。
 - 证据摘要：面向前端展示和审核解释。
 
+## 7. 内部服务 API
+
+内部服务 API 用于 Go API 服务、智能体、模型服务、规则引擎和 Graph RAG 服务之间通信。该部分为目标设计，后续实现应保持与对外 API 的字段命名一致。
+
+### 7.1 通信方式
+
+- 内部同步调用默认使用 HTTP/JSON，统一前缀 `/internal/v1`。
+- 批量审核、视频推理、大文件处理、失败重试和离线评估使用任务队列异步处理。
+- 所有内部请求必须携带 `trace_id`，并尽量携带 `task_id`、`tenant_id`、`business_id`、`policy_id`。
+- 所有工具和内部服务响应统一包装为 `ToolResponse`。
+
+```json
+{
+  "status": "success",
+  "data": {},
+  "errors": [],
+  "latency_ms": 120,
+  "trace_id": "trace_20260604_0001"
+}
+```
+
+错误对象结构：
+
+```json
+{
+  "code": "MODEL_TIMEOUT",
+  "message": "模型推理超时",
+  "retryable": true
+}
+```
+
+### 7.2 模型路由
+
+`POST /internal/v1/models/route`
+
+请求体 `ModelRouteRequest`：
+
+```json
+{
+  "trace_id": "trace_20260604_0001",
+  "tenant_id": "tenant_demo",
+  "business_id": "community_post",
+  "policy_id": "default_policy",
+  "modality": "image",
+  "content_features": {
+    "text_length": 0,
+    "image_count": 1,
+    "video_duration_sec": null,
+    "language": null
+  },
+  "candidate_models": ["image_safety_v1", "vision_general_baseline"]
+}
+```
+
+响应 `ToolResponse.data` 为 `ModelRouteDecision`。
+
+### 7.3 模型推理
+
+`POST /internal/v1/models/infer`
+
+请求体 `ModelInferenceRequest`：
+
+```json
+{
+  "trace_id": "trace_20260604_0001",
+  "task_id": "task_0001",
+  "route_decision": {
+    "modality": "image",
+    "selected_model": "image_safety_v1",
+    "reason": "图片模态审核，优先选择图片安全模型",
+    "fallback_model": "vision_general_baseline"
+  },
+  "content": {
+    "url": "object://bucket/sample.jpg",
+    "metadata": {}
+  },
+  "labels_requested": ["political_sensitive", "pornographic_vulgar"],
+  "detail_level": "detailed",
+  "timeout_ms": 3000
+}
+```
+
+响应 `ToolResponse.data` 为 `ModelResult`：
+
+```json
+{
+  "model_name": "image_safety_v1",
+  "model_version": "2026-06",
+  "modality": "image",
+  "labels": [
+    {
+      "label": "political_sensitive",
+      "sub_label": "political_symbol",
+      "score": 0.82,
+      "normalized_score": 0.82
+    }
+  ],
+  "evidence": [
+    {
+      "evidence_id": "ev_img_001",
+      "type": "image_box",
+      "content": "疑似涉政旗帜图案",
+      "box": [120, 80, 240, 160]
+    }
+  ],
+  "latency_ms": 780,
+  "status": "success",
+  "error": null
+}
+```
+
+`ModelResult.labels[].normalized_score` 用于规则引擎跨模型比较；如模型只返回原始 `score`，后续实现应在模型服务或智能体侧归一化到 0 到 1。
+
+### 7.4 规则查询
+
+`POST /internal/v1/rules/query`
+
+请求体：
+
+```json
+{
+  "trace_id": "trace_20260604_0001",
+  "tenant_id": "tenant_demo",
+  "business_id": "community_post",
+  "policy_id": "default_policy",
+  "policy_version": "v1",
+  "modality": "text",
+  "labels": ["political_sensitive"]
+}
+```
+
+响应 `ToolResponse.data.rules` 为 `PolicyRule` 列表。
+
+### 7.5 规则执行
+
+`POST /internal/v1/rules/evaluate`
+
+请求体 `RuleEvaluationRequest`：
+
+```json
+{
+  "trace_id": "trace_20260604_0001",
+  "task_id": "task_0001",
+  "tenant_id": "tenant_demo",
+  "business_id": "community_post",
+  "policy_id": "default_policy",
+  "policy_version": "v1",
+  "modality": "text",
+  "model_results": [],
+  "rag_evidence": []
+}
+```
+
+响应 `ToolResponse.data.rule_results` 为 `RuleResult` 列表：
+
+```json
+{
+  "rule_id": "rule_model_score_001",
+  "version": "v1",
+  "label": "political_sensitive",
+  "condition_type": "model_score",
+  "threshold": 0.8,
+  "observed_value": 0.82,
+  "matched": true,
+  "action": "review",
+  "evidence_refs": ["ev_text_001"],
+  "reason": "模型分数超过策略阈值"
+}
+```
+
+### 7.6 Graph RAG 检索
+
+`POST /internal/v1/rag/search`
+
+请求体 `GraphRagSearchRequest`：
+
+```json
+{
+  "trace_id": "trace_20260604_0001",
+  "query": "political_sensitive political_symbol",
+  "labels": ["political_sensitive"],
+  "evidence": [],
+  "policy_id": "default_policy",
+  "business_id": "community_post",
+  "top_k": 5,
+  "max_depth": 2,
+  "node_types": ["Policy", "Case", "Rule", "Label"]
+}
+```
+
+响应 `ToolResponse.data`：
+
+```json
+{
+  "hits": [
+    {
+      "node_id": "policy_P001",
+      "node_type": "Policy",
+      "title": "政治敏感内容审核政策",
+      "similarity": 0.87,
+      "confidence": 0.81,
+      "summary": "该政策说明涉政符号需要进入复核。"
+    }
+  ],
+  "paths": [
+    {
+      "path": ["Label:political_sensitive", "Policy:P001", "Rule:rule_model_score_001"],
+      "score": 0.84
+    }
+  ],
+  "evidence_summary": "命中政治敏感标签相关政策和规则，建议复核。"
+}
+```
+
+### 7.7 审计轨迹查询
+
+`GET /internal/v1/audit/traces/{trace_id}`
+
+响应 `ToolResponse.data` 为 `AuditTrace`。
+
+### 7.8 策略阈值预览
+
+`POST /internal/v1/policies/{policy_id}/preview`
+
+请求体：
+
+```json
+{
+  "trace_id": "trace_20260604_0001",
+  "task_id": "task_0001",
+  "policy_version": "v1",
+  "threshold_overrides": {
+    "political_sensitive": 0.9
+  },
+  "model_results": [],
+  "rag_evidence": []
+}
+```
+
+响应 `ToolResponse.data` 返回预览后的 `decision`、`risk_score`、`labels`、`rule_results` 和 `suggested_action`，不写入正式审核结果。
