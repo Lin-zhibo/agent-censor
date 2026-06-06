@@ -14,9 +14,88 @@
 - 使用 `policy_id` 和 `version` 管理策略版本。
 - 使用 `trace_id` 串联请求、模型、规则、RAG 证据和处置结果。
 
-## 3. 固定接口
+## 3. 各层模块骨架
 
-### 3.1 提交单条审核任务
+本文档中的 API 不只是接口格式约定，还对应目标系统中各层模块的调用边界。当前仓库仍处于早期骨架阶段，下表描述的是后续实现应遵循的目标模块划分。
+
+### 3.1 模块职责与接口归属
+
+| 模块 | 目标职责 | 提供或调用的接口 | 主要生产/消费对象 |
+| --- | --- | --- | --- |
+| Frontend | 审核工作台、策略配置、证据展示、人工复核、阈值预览 | 调用 `/api/v1` 对外接口 | 生产 `ModerationRequest`，消费 `ModerationResult`、任务状态、标签体系 |
+| API Controller | 对外 REST 入口、鉴权、租户/业务/模态/策略校验、响应封装 | 提供 `/api/v1/moderation/tasks`、`/api/v1/moderation/batch`、`/api/v1/moderation/tasks/{task_id}`、`/api/v1/policies/{policy_id}/rules`、`/api/v1/labels` | 消费 `ModerationRequest`、`PolicyRule`，返回任务状态或审核结果 |
+| Task Service | 创建任务、维护任务状态、判断同步或异步、生成 `task_id` 和 `trace_id` | 被 API Controller 调用，必要时写入任务队列 | 生产 `TaskContext`，更新任务状态 |
+| Agent Orchestrator | 编排模型路由、模型推理、规则执行、Graph RAG 检索和解释生成 | 调用 `/internal/v1/models/*`、`/internal/v1/rules/*`、`/internal/v1/rag/search` | 消费 `TaskContext`，汇总 `ModelResult`、`RuleResult`、`GraphRagEvidence` |
+| Model Router | 根据租户、业务、策略、模态和内容特征选择模型 | 提供 `POST /internal/v1/models/route` | 生产 `ModelRouteDecision` |
+| Model Inference Service | 执行文本、图片、视频、音频或多模态推理 | 提供 `POST /internal/v1/models/infer` | 消费 `ModelInferenceRequest`，生产 `ModelResult` |
+| Rule Engine | 查询策略规则、执行关键词/正则/model_score/label_combo/rag_node 条件 | 提供 `POST /internal/v1/rules/query`、`POST /internal/v1/rules/evaluate` | 消费 `PolicyRule`、`ModelResult`、RAG 证据，生产 `RuleResult` |
+| Graph RAG Service | 进行向量召回、图谱邻域扩展和证据摘要 | 提供 `POST /internal/v1/rag/search` | 消费 `GraphRagSearchRequest`，生产 `GraphRagEvidence` |
+| Decision Service | 融合模型、规则和 RAG 结果，形成最终审核结论 | 被 Agent Orchestrator 或 API 服务调用 | 生产 `ModerationResult` |
+| Audit Service | 写入和查询审计轨迹，支撑复盘和连续对话 | 提供 `GET /internal/v1/audit/traces/{trace_id}` | 生产并返回 `AuditTrace` |
+| Storage/DB | 存储租户、业务、策略、规则、任务、结果、审计、embedding 和图谱关系 | 被各服务读写 | 持久化任务状态、规则、结果、审计、向量和图谱数据 |
+
+### 3.2 调用关系骨架
+
+```mermaid
+flowchart LR
+  Frontend["Frontend<br/>审核工作台"]
+  API["API Controller<br/>/api/v1"]
+  Task["Task Service"]
+  Queue["消息队列"]
+  Worker["Task Worker"]
+  Agent["Agent Orchestrator"]
+  Router["Model Router"]
+  Model["Model Inference Service"]
+  Rule["Rule Engine"]
+  Rag["Graph RAG Service"]
+  Decision["Decision Service"]
+  Audit["Audit Service"]
+  DB[("Storage/DB")]
+
+  Frontend -->|"ModerationRequest/PolicyRule"| API
+  API --> Task
+  Task -->|"同步 TaskContext"| Agent
+  Task -->|"异步任务"| Queue
+  Queue --> Worker
+  Worker --> Agent
+  Agent -->|"ModelRouteRequest"| Router
+  Router -->|"ModelRouteDecision"| Agent
+  Agent -->|"ModelInferenceRequest"| Model
+  Model -->|"ModelResult"| Agent
+  Agent -->|"RuleEvaluationRequest"| Rule
+  Rule -->|"RuleResult"| Agent
+  Agent -->|"GraphRagSearchRequest"| Rag
+  Rag -->|"GraphRagEvidence"| Agent
+  Agent --> Decision
+  Decision -->|"ModerationResult"| API
+  Decision --> Audit
+  Audit -->|"AuditTrace"| DB
+  Task --> DB
+  Rule --> DB
+  Rag --> DB
+  API -->|"任务状态/审核结果"| Frontend
+```
+
+### 3.3 接口到模块映射
+
+| 接口 | 提供模块 | 主要调用方 | 主要输入 | 主要输出 |
+| --- | --- | --- | --- | --- |
+| `POST /api/v1/moderation/tasks` | API Controller | Frontend、外部系统 | `ModerationRequest` | `ModerationResult` 或 `task_id`、`status` |
+| `POST /api/v1/moderation/batch` | API Controller | Frontend、外部系统 | 多个 `ModerationRequest` | `batch_id`、任务列表、初始状态 |
+| `GET /api/v1/moderation/tasks/{task_id}` | API Controller | Frontend、外部系统 | `task_id` | 任务状态、失败原因或 `ModerationResult` |
+| `POST /api/v1/policies/{policy_id}/rules` | API Controller | 策略配置前端 | `PolicyRule` | 规则 ID、版本、启用状态 |
+| `GET /api/v1/labels` | API Controller | Frontend、外部系统 | 可选过滤条件 | 标签体系、默认阈值、建议动作 |
+| `POST /internal/v1/models/route` | Model Router | Agent Orchestrator | `ModelRouteRequest` | `ModelRouteDecision` |
+| `POST /internal/v1/models/infer` | Model Inference Service | Agent Orchestrator、Task Worker | `ModelInferenceRequest` | `ModelResult` |
+| `POST /internal/v1/rules/query` | Rule Engine | Agent Orchestrator、策略预览流程 | 规则查询条件 | `PolicyRule` 列表 |
+| `POST /internal/v1/rules/evaluate` | Rule Engine | Agent Orchestrator、策略预览流程 | `RuleEvaluationRequest` | `RuleResult` 列表 |
+| `POST /internal/v1/rag/search` | Graph RAG Service | Agent Orchestrator | `GraphRagSearchRequest` | `GraphRagEvidence` |
+| `GET /internal/v1/audit/traces/{trace_id}` | Audit Service | Agent Orchestrator、运营追问流程 | `trace_id` | `AuditTrace` |
+| `POST /internal/v1/policies/{policy_id}/preview` | Rule Engine 或 Decision Service | Frontend 经 API 服务触发、策略预览流程 | 阈值覆盖、模型结果、RAG 证据 | 预览版 `ModerationResult` 字段 |
+
+## 4. 固定接口
+
+### 4.1 提交单条审核任务
 
 `POST /api/v1/moderation/tasks`
 
@@ -27,7 +106,7 @@
 - 对可同步完成的轻量任务直接返回 `ModerationResult`。
 - 对耗时任务返回 `task_id` 和任务状态，前端再查询结果。
 
-### 3.2 提交批量审核任务
+### 4.2 提交批量审核任务
 
 `POST /api/v1/moderation/batch`
 
@@ -37,7 +116,7 @@
 - 支持批量排队、批量模型推理和批量规则执行。
 - 返回批次 ID、任务列表和初始状态。
 
-### 3.3 查询审核结果
+### 4.3 查询审核结果
 
 `GET /api/v1/moderation/tasks/{task_id}`
 
@@ -47,7 +126,7 @@
 - 如果任务完成，返回 `ModerationResult`。
 - 如果任务失败，返回失败原因和可重试状态。
 
-### 3.4 新增或更新规则
+### 4.4 新增或更新规则
 
 `POST /api/v1/policies/{policy_id}/rules`
 
@@ -58,7 +137,7 @@
 - 返回规则 ID、版本和启用状态。
 - 写入规则变更审计记录。
 
-### 3.5 查询标签体系
+### 4.5 查询标签体系
 
 `GET /api/v1/labels`
 
@@ -67,9 +146,9 @@
 - 返回一级标签、二级标签、说明、默认阈值、建议处置动作。
 - 支持按模态、业务或策略过滤。
 
-## 4. 核心数据结构
+## 5. 核心数据结构
 
-### 4.1 ModerationRequest
+### 5.1 ModerationRequest
 
 ```json
 {
@@ -97,7 +176,9 @@
 - `detail_level`：`basic` 仅返回结论，`detailed` 返回标签、证据和解释。
 - `trace_id`：链路追踪 ID。
 
-### 4.2 ModerationResult
+产生/消费关系：`ModerationRequest` 由 Frontend 或外部系统产生，由 API Controller 校验，并由 Task Service 转换为 `TaskContext` 交给同步链路或异步队列。
+
+### 5.2 ModerationResult
 
 ```json
 {
@@ -174,7 +255,9 @@
 - `rule_results`：规则命中结果。
 - `suggested_action`：建议处置动作，例如 `manual_review`、`block`、`pass_with_limit`。
 
-### 4.3 PolicyRule
+产生/消费关系：`ModerationResult` 由 Decision Service 产生，由 API Controller 返回给前端或外部系统；同步任务直接返回，异步任务通过 `GET /api/v1/moderation/tasks/{task_id}` 查询返回。
+
+### 5.3 PolicyRule
 
 ```json
 {
@@ -199,7 +282,9 @@
 - `label_combo`：多个标签组合命中。
 - `rag_node`：Graph RAG 命中特定政策或案例节点。
 
-### 4.4 ModelRouteDecision
+产生/消费关系：`PolicyRule` 由策略配置前端通过 API Controller 新增或更新，持久化后由 Rule Engine 查询和执行；规则变更必须写入审计。
+
+### 5.4 ModelRouteDecision
 
 ```json
 {
@@ -217,7 +302,9 @@
 - `reason`：路由原因。
 - `fallback_model`：主模型不可用时的降级模型。
 
-### 4.5 AuditTrace
+产生/消费关系：`ModelRouteDecision` 由 Model Router 产生，由 Agent Orchestrator 消费，用于后续调用模型推理服务；fallback 信息必须进入审计轨迹。
+
+### 5.5 AuditTrace
 
 ```json
 {
@@ -235,7 +322,9 @@
 
 `AuditTrace` 必须记录请求、模型、规则、RAG 证据、最终结果和人工处置结果，用于复盘、验收和问题定位。
 
-## 5. 前端结果对象要求
+产生/消费关系：`AuditTrace` 由 Audit Service 在审核链路末尾写入，由审计查询接口、连续对话和问题复盘流程消费。
+
+## 6. 前端结果对象要求
 
 前端审核结果对象必须能支持：
 
@@ -245,20 +334,20 @@
 - 来源解释：模型来源、规则来源、Graph RAG 来源。
 - 人工动作：通过、打回、改标、备注。
 
-## 6. Graph RAG 结果对象要求
+## 7. Graph RAG 结果对象要求
 
-Graph RAG 检索结果必须能支持：
+Graph RAG 检索结果在内部链路中统称为 `GraphRagEvidence`，由 Graph RAG Service 产生，由 Agent Orchestrator、Rule Engine 和 Decision Service 消费。该结果必须能支持：
 
 - 命中节点：政策、案例、标签、规则、样本。
 - 关系路径：例如“标签 -> 政策条款 -> 典型案例 -> 规则”。
 - 相似度或置信度：用于排序和解释。
 - 证据摘要：面向前端展示和审核解释。
 
-## 7. 内部服务 API
+## 8. 内部服务 API
 
 内部服务 API 用于 Go API 服务、智能体、模型服务、规则引擎和 Graph RAG 服务之间通信。该部分为目标设计，后续实现应保持与对外 API 的字段命名一致。
 
-### 7.1 通信方式
+### 8.1 通信方式
 
 - 内部同步调用默认使用 HTTP/JSON，统一前缀 `/internal/v1`。
 - 批量审核、视频推理、大文件处理、失败重试和离线评估使用任务队列异步处理。
@@ -285,7 +374,7 @@ Graph RAG 检索结果必须能支持：
 }
 ```
 
-### 7.2 模型路由
+### 8.2 模型路由
 
 `POST /internal/v1/models/route`
 
@@ -310,7 +399,7 @@ Graph RAG 检索结果必须能支持：
 
 响应 `ToolResponse.data` 为 `ModelRouteDecision`。
 
-### 7.3 模型推理
+### 8.3 模型推理
 
 `POST /internal/v1/models/infer`
 
@@ -367,7 +456,7 @@ Graph RAG 检索结果必须能支持：
 
 `ModelResult.labels[].normalized_score` 用于规则引擎跨模型比较；如模型只返回原始 `score`，后续实现应在模型服务或智能体侧归一化到 0 到 1。
 
-### 7.4 规则查询
+### 8.4 规则查询
 
 `POST /internal/v1/rules/query`
 
@@ -387,7 +476,7 @@ Graph RAG 检索结果必须能支持：
 
 响应 `ToolResponse.data.rules` 为 `PolicyRule` 列表。
 
-### 7.5 规则执行
+### 8.5 规则执行
 
 `POST /internal/v1/rules/evaluate`
 
@@ -424,7 +513,7 @@ Graph RAG 检索结果必须能支持：
 }
 ```
 
-### 7.6 Graph RAG 检索
+### 8.6 Graph RAG 检索
 
 `POST /internal/v1/rag/search`
 
@@ -468,13 +557,13 @@ Graph RAG 检索结果必须能支持：
 }
 ```
 
-### 7.7 审计轨迹查询
+### 8.7 审计轨迹查询
 
 `GET /internal/v1/audit/traces/{trace_id}`
 
 响应 `ToolResponse.data` 为 `AuditTrace`。
 
-### 7.8 策略阈值预览
+### 8.8 策略阈值预览
 
 `POST /internal/v1/policies/{policy_id}/preview`
 
