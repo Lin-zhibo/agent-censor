@@ -13,6 +13,7 @@
 - 使用 `modality` 区分文本、图片、视频、音频等内容模态。
 - 使用 `policy_id` 和 `version` 管理策略版本。
 - 使用 `trace_id` 串联请求、模型、规则、RAG 证据和处置结果。
+- 标签字段值统一使用大写英文单词，限制为 1 个 word，例如 `SECURITY`、`POLITICAL`、`FLAG`；中文名称和说明放在展示名或描述字段中。
 
 ## 3. 各层模块骨架
 
@@ -187,8 +188,8 @@ flowchart LR
   "risk_score": 0.82,
   "labels": [
     {
-      "label": "political_sensitive",
-      "sub_label": "political_symbol",
+      "label": "POLITICAL",
+      "sub_label": "FLAG",
       "score": 0.82
     }
   ],
@@ -208,8 +209,8 @@ flowchart LR
       "modality": "text",
       "labels": [
         {
-          "label": "political_sensitive",
-          "sub_label": "political_symbol",
+          "label": "POLITICAL",
+          "sub_label": "FLAG",
           "score": 0.82,
           "normalized_score": 0.82
         }
@@ -230,14 +231,14 @@ flowchart LR
     {
       "rule_id": "rule_sensitive_word_001",
       "version": "v1",
-      "label": "political_sensitive",
+      "label": "POLITICAL",
       "condition_type": "model_score",
       "threshold": 0.8,
       "observed_value": 0.82,
       "matched": true,
       "action": "review",
       "evidence_refs": ["ev_text_001"],
-      "reason": "模型 political_sensitive 分数 0.82 超过阈值 0.8"
+      "reason": "模型 POLITICAL/FLAG 分数 0.82 超过阈值 0.8"
     }
   ],
   "suggested_action": "manual_review",
@@ -262,7 +263,7 @@ flowchart LR
 ```json
 {
   "rule_id": "rule_sensitive_word_001",
-  "label": "political_sensitive",
+  "label": "POLITICAL",
   "condition": {
     "type": "keyword",
     "value": ["示例敏感词"]
@@ -304,13 +305,39 @@ flowchart LR
 
 产生/消费关系：`ModelRouteDecision` 由 Model Router 产生，由 Agent Orchestrator 消费，用于后续调用模型推理服务；fallback 信息必须进入审计轨迹。
 
-### 5.5 AuditTrace
+### 5.5 树型智能体顶级返回对象
+
+树型智能体顶级返回对象为内部对象，不新增对外 API。RootAgent 必须按以下结构返回：
+
+```json
+{
+  "security_labels": ["LABEL1"],
+  "ecosystem_labels": ["LABEL2"],
+  "reason": ""
+}
+```
+
+约束：
+
+- `security_labels` 来自 `SECURITY` 子树。
+- `ecosystem_labels` 来自 `ECOSYSTEM` 子树。
+- `reason` 是 RootAgent 对各个子智能体 `reason` 的综合洞察。
+- 父智能体不得修改、添加、删除收集到的子智能体标签，包括不改名、不去重、不排序、不新增、不删除。
+
+产生/消费关系：该对象由 RootAgent 产生，由 Decision Service 和 Audit Service 消费；Decision Service 可基于该对象、规则结果、模型结果和 Graph RAG 证据生成 `ModerationResult`。
+
+### 5.6 AuditTrace
 
 ```json
 {
   "trace_id": "trace_20260604_0001",
   "task_id": "task_0001",
   "request_snapshot": {},
+  "agent_tree_result": {
+    "security_labels": ["LABEL1"],
+    "ecosystem_labels": ["LABEL2"],
+    "reason": ""
+  },
   "model_results": [],
   "rule_results": [],
   "rag_evidence": [],
@@ -320,7 +347,7 @@ flowchart LR
 }
 ```
 
-`AuditTrace` 必须记录请求、模型、规则、RAG 证据、最终结果和人工处置结果，用于复盘、验收和问题定位。
+`AuditTrace` 必须记录请求、树型智能体返回、模型、规则、RAG 证据、最终结果和人工处置结果，用于复盘、验收和问题定位。
 
 产生/消费关系：`AuditTrace` 由 Audit Service 在审核链路末尾写入，由审计查询接口、连续对话和问题复盘流程消费。
 
@@ -419,7 +446,7 @@ Graph RAG 检索结果在内部链路中统称为 `GraphRagEvidence`，由 Graph
     "url": "object://bucket/sample.jpg",
     "metadata": {}
   },
-  "labels_requested": ["political_sensitive", "pornographic_vulgar"],
+  "labels_requested": ["POLITICAL", "PORN"],
   "detail_level": "detailed",
   "timeout_ms": 3000
 }
@@ -434,8 +461,8 @@ Graph RAG 检索结果在内部链路中统称为 `GraphRagEvidence`，由 Graph
   "modality": "image",
   "labels": [
     {
-      "label": "political_sensitive",
-      "sub_label": "political_symbol",
+      "label": "POLITICAL",
+      "sub_label": "FLAG",
       "score": 0.82,
       "normalized_score": 0.82
     }
@@ -470,7 +497,7 @@ Graph RAG 检索结果在内部链路中统称为 `GraphRagEvidence`，由 Graph
   "policy_id": "default_policy",
   "policy_version": "v1",
   "modality": "text",
-  "labels": ["political_sensitive"]
+  "labels": ["POLITICAL"]
 }
 ```
 
@@ -502,7 +529,7 @@ Graph RAG 检索结果在内部链路中统称为 `GraphRagEvidence`，由 Graph
 {
   "rule_id": "rule_model_score_001",
   "version": "v1",
-  "label": "political_sensitive",
+  "label": "POLITICAL",
   "condition_type": "model_score",
   "threshold": 0.8,
   "observed_value": 0.82,
@@ -522,8 +549,8 @@ Graph RAG 检索结果在内部链路中统称为 `GraphRagEvidence`，由 Graph
 ```json
 {
   "trace_id": "trace_20260604_0001",
-  "query": "political_sensitive political_symbol",
-  "labels": ["political_sensitive"],
+  "query": "POLITICAL FLAG",
+  "labels": ["POLITICAL"],
   "evidence": [],
   "policy_id": "default_policy",
   "business_id": "community_post",
@@ -549,7 +576,7 @@ Graph RAG 检索结果在内部链路中统称为 `GraphRagEvidence`，由 Graph
   ],
   "paths": [
     {
-      "path": ["Label:political_sensitive", "Policy:P001", "Rule:rule_model_score_001"],
+      "path": ["POLITICAL", "Policy:P001", "Rule:rule_model_score_001"],
       "score": 0.84
     }
   ],
@@ -575,7 +602,7 @@ Graph RAG 检索结果在内部链路中统称为 `GraphRagEvidence`，由 Graph
   "task_id": "task_0001",
   "policy_version": "v1",
   "threshold_overrides": {
-    "political_sensitive": 0.9
+    "POLITICAL": 0.9
   },
   "model_results": [],
   "rag_evidence": []
