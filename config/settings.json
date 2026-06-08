@@ -1,38 +1,536 @@
 {
-    "rules":{
-        "security":{
-            "label1":{
-                "name":"NAME",
-                "introduction":"INTRODUCTION",
-                "label1-1":{
-                    "name":"NAME",
-                    "introduction":"INTRODUCTION"
-                },
-                "label1-2":{
-                    "name":"NAME",
-                    "introduction":"INTRODUCTION"
-                }
-
-            }
+  "rules": {
+    "security": {
+      "DISTORT_TRADITION": {
+        "name": "歪曲优秀传统",
+        "introduction": "歪曲优秀传统相关审核规则",
+        "HISTORY_DISTORT": {
+          "name": "中国历史恶意传播",
+          "introduction": "中国历史恶意传播相关审核规则"
         },
-        "ecosystem":{
-            "label2":{
-                "name":"NAME",
-                "introduction":"INTRODUCTION",
-                "label2-1":{
-                    "name":"NAME",
-                    "introduction":"INTRODUCTION"
-                },
-                "label2-2":{
-                    "name":"NAME",
-                    "introduction":"INTRODUCTION"
-                },
-                "label2-3":{
-                    "name":"NAME",
-                    "introduction":"INTRODUCTION"
-                }
-
-            }
+        "CULTURE_DISTORT": {
+          "name": "不当解读中国传统文化",
+          "introduction": "不当解读中国传统文化相关审核规则"
+        },
+        "SUPPORT_NEGATIVE": {
+          "name": "支持负面人物",
+          "introduction": "支持负面人物相关审核规则"
+        },
+        "ETHNIC_DIGNITY": {
+          "name": "损害民族尊严",
+          "introduction": "损害民族尊严相关审核规则"
+        },
+        "ATTACK_HEROES": {
+          "name": "攻击历史正面人物",
+          "introduction": "攻击历史正面人物相关审核规则"
         }
+      },
+      "TERROR": {
+        "name": "传播恐怖主义",
+        "introduction": "传播恐怖主义相关审核规则",
+        "TERROR_GLORIFY": {
+          "name": "美化恐怖主义",
+          "introduction": "美化恐怖主义相关审核规则"
+        },
+        "ETHNIC_SENTIMENT": {
+          "name": "伤害民族感情",
+          "introduction": "伤害民族感情相关审核规则"
+        },
+        "REGION_BIAS": {
+          "name": "地域歧视相关",
+          "introduction": "地域歧视相关审核规则"
+        }
+      },
+      "ETHNIC_UNITY": {
+        "name": "损害中国民族与地域团结",
+        "introduction": "损害中国民族与地域团结相关审核规则",
+        "ETHNIC_POLICY": {
+          "name": "攻击少数民族政策",
+          "introduction": "攻击少数民族政策相关审核规则"
+        },
+        "ETHNIC_CUSTOMS": {
+          "name": "违反民族类公序良俗",
+          "introduction": "违反民族类公序良俗相关审核规则"
+        },
+        "ETHNIC_EXPRESSION": {
+          "name": "少数民族不当表达",
+          "introduction": "少数民族不当表达相关审核规则"
+        },
+        "ETHNIC_WAR": {
+          "name": "美化中国历史民族相关战争",
+          "introduction": "美化中国历史民族相关战争相关审核规则"
+        }
+      },
+      "RELIGION_POLICY": {
+        "name": "违背中国国内宗教政策",
+        "introduction": "违背中国国内宗教政策相关审核规则",
+        "RELIG_CONTENT": {
+          "name": "传播非邪教内容",
+          "introduction": "传播非邪教内容相关审核规则"
+        },
+        "RELIG_MARKETING": {
+          "name": "非邪教营销",
+          "introduction": "非邪教营销相关审核规则"
+        },
+        "RELIG_RIGHTS": {
+          "name": "损害非邪教权益",
+          "introduction": "损害非邪教权益相关审核规则"
+        },
+        "RELIG_DEPICT": {
+          "name": "非正面表述邪教内容",
+          "introduction": "非正面表述邪教内容相关审核规则"
+        },
+        "RELIG_EXTREME": {
+          "name": "非邪教内容异端化",
+          "introduction": "非邪教内容异端化相关审核规则"
+        },
+        "RELIG_STABILITY": {
+          "name": "破坏国内非邪教稳定",
+          "introduction": "破坏国内非邪教稳定相关审核规则"
+        }
+      },
+      "ANTI_SCIENCE": {
+        "name": "违背科学精神",
+        "introduction": "违背科学精神相关审核规则",
+        "SUPPORT_SUPERSTITION": {
+          "name": "支持封建迷信",
+          "introduction": "支持封建迷信相关审核规则"
+        },
+        "SUPERSTITION_SALE": {
+          "name": "封建迷信营销",
+          "introduction": "封建迷信营销相关审核规则"
+        },
+        "SUPERSTITION_TRAFFIC": {
+          "name": "封建迷信导流",
+          "introduction": "封建迷信导流相关审核规则"
+        }
+      },
+      "SOCIAL_PANIC": {
+        "name": "引起社会恐慌",
+        "introduction": "引起社会恐慌相关审核规则",
+        "OFFICIAL_FILES": {
+          "name": "不当发布政府官方文件",
+          "introduction": "不当发布政府官方文件相关审核规则"
+        },
+        "HOTSPOT_MARKETING": {
+          "name": "借社会热点营销",
+          "introduction": "借社会热点营销相关审核规则"
+        },
+        "FAKE_POLICY": {
+          "name": "虚假民生政策信息",
+          "introduction": "虚假民生政策信息相关审核规则"
+        },
+        "SENSITIVE_REGION": {
+          "name": "不当发布敏感地区民生社会态势",
+          "introduction": "不当发布敏感地区民生社会态势相关审核规则"
+        },
+        "MAJOR_INCIDENT": {
+          "name": "不当发布社会重大事件",
+          "introduction": "不当发布社会重大事件相关审核规则"
+        }
+      },
+      "NEGATIVE_FIGURE": {
+        "name": "美化反面和负面人物形象",
+        "introduction": "美化反面和负面人物形象相关审核规则",
+        "SUPPORT_NEGATIVE": {
+          "name": "支持社会负面人物",
+          "introduction": "支持社会负面人物相关审核规则"
+        },
+        "NEGATIVE_MARKETING": {
+          "name": "负面人物营销",
+          "introduction": "负面人物营销相关审核规则"
+        },
+        "NEGATIVE_RETURN": {
+          "name": "负面人物复出",
+          "introduction": "负面人物复出相关审核规则"
+        }
+      },
+      "BAD_VALUES": {
+        "name": "不良价值观",
+        "introduction": "不良价值观相关审核规则",
+        "SUICIDE_GAME": {
+          "name": "自杀游戏内容",
+          "introduction": "自杀游戏内容相关审核规则"
+        },
+        "SUPPORT_SUICIDE": {
+          "name": "支持自杀自残",
+          "introduction": "支持自杀自残相关审核规则"
+        },
+        "SUICIDE_METHOD": {
+          "name": "自杀自残方法描述",
+          "introduction": "自杀自残方法描述相关审核规则"
+        },
+        "BAD_RELATIONSHIP": {
+          "name": "不当婚恋关系",
+          "introduction": "不当婚恋关系相关审核规则"
+        },
+        "FAKE_PERSONA": {
+          "name": "虚假人设营销及引流",
+          "introduction": "虚假人设营销及引流相关审核规则"
+        },
+        "FANDOM_CHAOS": {
+          "name": "饭圈乱象",
+          "introduction": "饭圈乱象相关审核规则"
+        },
+        "IDOL_CONSUMPTION": {
+          "name": "偶像非理性消费",
+          "introduction": "偶像非理性消费相关审核规则"
+        },
+        "FOREIGN_WORSHIP": {
+          "name": "崇洋媚外",
+          "introduction": "崇洋媚外相关审核规则"
+        },
+        "MIGRATION_INCITE": {
+          "name": "煽动移民",
+          "introduction": "煽动移民相关审核规则"
+        },
+        "GENDER_OPPOSITION": {
+          "name": "宣扬性别对立",
+          "introduction": "宣扬性别对立相关审核规则"
+        },
+        "GENDER_CONTROVERSY": {
+          "name": "性别争议内容",
+          "introduction": "性别争议内容相关审核规则"
+        },
+        "SUPPORT_LGBT": {
+          "name": "支持lgbt",
+          "introduction": "支持lgbt相关审核规则"
+        },
+        "LGBT_MARKETING": {
+          "name": "lgbt营销",
+          "introduction": "lgbt营销相关审核规则"
+        }
+      },
+      "MORAL_DECAY": {
+        "name": "道德败坏",
+        "introduction": "道德败坏相关审核规则",
+        "SOCIAL_ETHICS": {
+          "name": "违背社会道德准则",
+          "introduction": "违背社会道德准则相关审核规则"
+        },
+        "DISASTER_MARKETING": {
+          "name": "灾难事件营销",
+          "introduction": "灾难事件营销相关审核规则"
+        },
+        "FAKE_ENERGY": {
+          "name": "伪正能量",
+          "introduction": "伪正能量相关审核规则"
+        }
+      },
+      "VIOLENCE_DRUG": {
+        "name": "血腥暴力和赌博毒品",
+        "introduction": "血腥暴力和赌博毒品相关审核规则",
+        "GANG_ACTIVITY": {
+          "name": "黑恶势力活动",
+          "introduction": "黑恶势力活动相关审核规则"
+        },
+        "VIOLENCE_REVENGE": {
+          "name": "以暴制暴",
+          "introduction": "以暴制暴相关审核规则"
+        },
+        "RIGHTS_HARM": {
+          "name": "侵害他人合法权益",
+          "introduction": "侵害他人合法权益相关审核规则"
+        },
+        "VIOLENCE_PROMOTE": {
+          "name": "推崇暴力元素",
+          "introduction": "推崇暴力元素相关审核规则"
+        },
+        "DISCOMFORT": {
+          "name": "引人不适",
+          "introduction": "引人不适相关审核规则"
+        },
+        "GAMBLING": {
+          "name": "赌博活动",
+          "introduction": "赌博活动相关审核规则"
+        },
+        "DRUG_SPREAD": {
+          "name": "毒品传播相关",
+          "introduction": "毒品传播相关审核规则"
+        },
+        "DRUG_MAKE": {
+          "name": "毒品制造相关",
+          "introduction": "毒品制造相关审核规则"
+        },
+        "DRUG_MARKETING": {
+          "name": "毒品营销相关",
+          "introduction": "毒品营销相关审核规则"
+        }
+      },
+      "PORN": {
+        "name": "色情低俗",
+        "introduction": "色情低俗相关审核规则",
+        "FETISH": {
+          "name": "不良性癖好",
+          "introduction": "不良性癖好相关审核规则"
+        },
+        "SEX_SERVICE": {
+          "name": "色情服务",
+          "introduction": "色情服务相关审核规则"
+        },
+        "SEX_RESOURCE": {
+          "name": "色情资源",
+          "introduction": "色情资源相关审核规则"
+        },
+        "SEX_DATING": {
+          "name": "色情交友",
+          "introduction": "色情交友相关审核规则"
+        },
+        "SEX_BEHAVIOR": {
+          "name": "性行为相关",
+          "introduction": "性行为相关审核规则"
+        },
+        "SEX_SEDUCTION": {
+          "name": "性诱惑内容",
+          "introduction": "性诱惑内容相关审核规则"
+        }
+      },
+      "ILLEGAL_BEHAVIOR": {
+        "name": "违法行为",
+        "introduction": "违法行为相关审核规则",
+        "CURRENCY_LAW": {
+          "name": "违反人民币管理条例",
+          "introduction": "违反人民币管理条例相关审核规则"
+        },
+        "WILDLIFE_LAW": {
+          "name": "违反野生动物保护法",
+          "introduction": "违反野生动物保护法相关审核规则"
+        },
+        "RESOURCE_LAW": {
+          "name": "违反自然资源保护法",
+          "introduction": "违反自然资源保护法相关审核规则"
+        },
+        "RELIC_LAW": {
+          "name": "违反文物保护法",
+          "introduction": "违反文物保护法相关审核规则"
+        },
+        "PYRAMID_SCHEME": {
+          "name": "传播传销内容",
+          "introduction": "传播传销内容相关审核规则"
+        },
+        "THEFT_TUTORIAL": {
+          "name": "盗窃教程",
+          "introduction": "盗窃教程相关审核规则"
+        },
+        "ILLEGAL_GENERAL": {
+          "name": "一般违反行为",
+          "introduction": "一般违反行为相关审核规则"
+        },
+        "ILLEGAL_MARKETING": {
+          "name": "非法营销",
+          "introduction": "非法营销相关审核规则"
+        },
+        "GREY_CONTENT": {
+          "name": "网络黑灰产内容",
+          "introduction": "网络黑灰产内容相关审核规则"
+        },
+        "SOFTWARE_LAW": {
+          "name": "违反计算机软件保护条例",
+          "introduction": "违反计算机软件保护条例相关审核规则"
+        },
+        "ILLEGAL_TOOL": {
+          "name": "网络非法工具",
+          "introduction": "网络非法工具相关审核规则"
+        },
+        "MEDICAL_SERVICE": {
+          "name": "非法医疗服务",
+          "introduction": "非法医疗服务相关审核规则"
+        },
+        "BLACK_MARKETING": {
+          "name": "黑七类非法营销",
+          "introduction": "黑七类非法营销相关审核规则"
+        },
+        "UNLICENSED_SERVICE": {
+          "name": "三非非法服务",
+          "introduction": "三非非法服务相关审核规则"
+        },
+        "CHEATING_SERVICE": {
+          "name": "作弊服务信息",
+          "introduction": "作弊服务信息相关审核规则"
+        },
+        "EDUCATION_ILLEGAL": {
+          "name": "教育非法信息",
+          "introduction": "教育非法信息相关审核规则"
+        },
+        "FINANCE_ILLEGAL": {
+          "name": "金融非法信息",
+          "introduction": "金融非法信息相关审核规则"
+        },
+        "CYBER_VIOLENCE": {
+          "name": "网络暴力服务",
+          "introduction": "网络暴力服务相关审核规则"
+        },
+        "HACKING": {
+          "name": "黑客攻击",
+          "introduction": "黑客攻击相关审核规则"
+        },
+        "RUMOR_SERVICE": {
+          "name": "网络谣言服务",
+          "introduction": "网络谣言服务相关审核规则"
+        },
+        "FINANCE_CRIME": {
+          "name": "金融犯罪",
+          "introduction": "金融犯罪相关审核规则"
+        },
+        "UNQUALIFIED_SERVICE": {
+          "name": "无资质非法服务",
+          "introduction": "无资质非法服务相关审核规则"
+        },
+        "MINOR_BEAUTY": {
+          "name": "未成年人医美",
+          "introduction": "未成年人医美相关审核规则"
+        },
+        "CONTROLLED_TOOL": {
+          "name": "管制器具",
+          "introduction": "管制器具相关审核规则"
+        },
+        "TOOL_ASSEMBLY": {
+          "name": "管制器具组装",
+          "introduction": "管制器具组装相关审核规则"
+        },
+        "TOOL_DETAIL": {
+          "name": "管制器具详情",
+          "introduction": "管制器具详情相关审核规则"
+        },
+        "CONTROLLED_DRUGS": {
+          "name": "管制药品",
+          "introduction": "管制药品相关审核规则"
+        },
+        "DANGEROUS_CHEMICAL": {
+          "name": "危险化学品",
+          "introduction": "危险化学品相关审核规则"
+        },
+        "FRAUD": {
+          "name": "诈骗信息",
+          "introduction": "诈骗信息相关审核规则"
+        },
+        "PRIVACY_LAW": {
+          "name": "违反个人信息保护法",
+          "introduction": "违反个人信息保护法相关审核规则"
+        },
+        "PRIVACY_SALE": {
+          "name": "个人隐私买卖",
+          "introduction": "个人隐私买卖相关审核规则"
+        },
+        "PRIVACY_SERVICE": {
+          "name": "侵犯个人隐私服务",
+          "introduction": "侵犯个人隐私服务相关审核规则"
+        },
+        "FINANCE_CONSULT": {
+          "name": "非法金融咨询",
+          "introduction": "非法金融咨询相关审核规则"
+        },
+        "FINANCE_PRODUCT": {
+          "name": "非法金融产品推广",
+          "introduction": "非法金融产品推广相关审核规则"
+        },
+        "FINANCE_TRADE": {
+          "name": "诱导金融交易",
+          "introduction": "诱导金融交易相关审核规则"
+        },
+        "ILLEGAL_AGENCY": {
+          "name": "非法中介服务",
+          "introduction": "非法中介服务相关审核规则"
+        }
+      }
+    },
+    "ecosystem": {
+      "ECO_DIVERSION": {
+        "name": "导流",
+        "introduction": "导流相关审核规则",
+        "PRIVATE_CHAT": {
+          "name": "私聊导流",
+          "introduction": "私聊导流相关审核规则"
+        },
+        "CONTACT_TRAFFIC": {
+          "name": "联系方式导流",
+          "introduction": "联系方式导流相关审核规则"
+        },
+        "EXTERNAL_LINK": {
+          "name": "外部链接导流",
+          "introduction": "外部链接导流相关审核规则"
+        },
+        "OFF_PLATFORM": {
+          "name": "非平台导流",
+          "introduction": "非平台导流相关审核规则"
+        },
+        "PAYMENT_TRAFFIC": {
+          "name": "非官方支付方式导流",
+          "introduction": "非官方支付方式导流相关审核规则"
+        },
+        "GROUP_TRAFFIC": {
+          "name": "外部社群导流",
+          "introduction": "外部社群导流相关审核规则"
+        },
+        "SOCIAL_TRAFFIC": {
+          "name": "外部社交媒体导流",
+          "introduction": "外部社交媒体导流相关审核规则"
+        },
+        "PRODUCT_TRAFFIC": {
+          "name": "非官方产品导流",
+          "introduction": "非官方产品导流相关审核规则"
+        },
+        "EVASION_TRAFFIC": {
+          "name": "规避导流审查信息",
+          "introduction": "规避导流审查信息相关审核规则"
+        },
+        "TRAFFIC_INTENT": {
+          "name": "导流意图",
+          "introduction": "导流意图相关审核规则"
+        },
+        "GREY_TRAFFIC": {
+          "name": "黑灰产导流",
+          "introduction": "黑灰产导流相关审核规则"
+        }
+      },
+      "ECO_INSULT": {
+        "name": "辱骂",
+        "introduction": "辱骂相关审核规则",
+        "PERSONAL_BIAS": {
+          "name": "个人歧视",
+          "introduction": "个人歧视相关审核规则"
+        },
+        "PERSONAL_DEMEAN": {
+          "name": "贬低对方人格",
+          "introduction": "贬低对方人格相关审核规则"
+        },
+        "SEXUAL_INSULT": {
+          "name": "性方面侮辱",
+          "introduction": "性方面侮辱相关审核规则"
+        },
+        "SEXUAL_HARASS": {
+          "name": "性暗示骚扰",
+          "introduction": "性暗示骚扰相关审核规则"
+        },
+        "CURSE_THREAT": {
+          "name": "个人诅咒威胁",
+          "introduction": "个人诅咒威胁相关审核规则"
+        },
+        "FAMILY_THREAT": {
+          "name": "家庭组织威胁",
+          "introduction": "家庭组织威胁相关审核规则"
+        },
+        "BELITTLE": {
+          "name": "贬低言论",
+          "introduction": "贬低言论相关审核规则"
+        },
+        "SARCASM": {
+          "name": "阴阳怪气",
+          "introduction": "阴阳怪气相关审核规则"
+        },
+        "FAMILY_INSULT": {
+          "name": "侮辱家人",
+          "introduction": "侮辱家人相关审核规则"
+        },
+        "IDENTITY_INSULT": {
+          "name": "个人身份辱骂",
+          "introduction": "个人身份辱骂相关审核规则"
+        },
+        "EVASION_INSULT": {
+          "name": "规避辱骂审查信息",
+          "introduction": "规避辱骂审查信息相关审核规则"
+        }
+      }
     }
+  }
 }

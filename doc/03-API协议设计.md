@@ -13,7 +13,7 @@
 - 使用 `modality` 区分文本、图片、视频、音频等内容模态。
 - 使用 `policy_id` 和 `version` 管理策略版本。
 - 使用 `trace_id` 串联请求、模型、规则、RAG 证据和处置结果。
-- 标签字段值统一使用大写英文单词，限制为 1 个 word，例如 `SECURITY`、`PORN`、`NUDITY`；中文名称和说明放在展示名或描述字段中。
+- 标签字段值统一使用大写英文，限制为 1-2 个 word；多个 word 使用下划线连接，例如 `SECURITY`、`PORN`、`SUPPORT_SUICIDE`。不使用连字符或中文。常见前缀如 `ECO`、`AD`、`TERROR` 按 1 个 word 计算；中文名称和说明放在展示名或描述字段中。
 
 ## 3. 各层模块骨架
 
@@ -189,7 +189,7 @@ flowchart LR
   "labels": [
     {
         "label": "PORN",
-        "sub_label": "NUDITY",
+        "sub_label": "SEX_BEHAVIOR",
       "score": 0.82
     }
   ],
@@ -210,7 +210,7 @@ flowchart LR
       "labels": [
         {
             "label": "PORN",
-            "sub_label": "NUDITY",
+            "sub_label": "SEX_BEHAVIOR",
           "score": 0.82,
           "normalized_score": 0.82
         }
@@ -229,7 +229,7 @@ flowchart LR
   ],
   "rule_results": [
     {
-        "rule_id": "rule_porn_nudity_001",
+        "rule_id": "rule_porn_behavior_001",
       "version": "v1",
         "label": "PORN",
       "condition_type": "model_score",
@@ -238,7 +238,7 @@ flowchart LR
       "matched": true,
       "action": "review",
       "evidence_refs": ["ev_text_001"],
-        "reason": "模型 PORN/NUDITY 分数 0.82 超过阈值 0.8"
+        "reason": "模型 PORN/SEX_BEHAVIOR 分数 0.82 超过阈值 0.8"
     }
   ],
   "suggested_action": "manual_review",
@@ -462,7 +462,7 @@ Graph RAG 检索结果在内部链路中统称为 `GraphRagEvidence`，由 Graph
   "labels": [
     {
       "label": "PORN",
-      "sub_label": "NUDITY",
+      "sub_label": "SEX_BEHAVIOR",
       "score": 0.82,
       "normalized_score": 0.82
     }
@@ -549,7 +549,7 @@ Graph RAG 检索结果在内部链路中统称为 `GraphRagEvidence`，由 Graph
 ```json
 {
   "trace_id": "trace_20260604_0001",
-  "query": "PORN NUDITY",
+  "query": "PORN SEX_BEHAVIOR",
   "labels": ["PORN"],
   "evidence": [],
   "policy_id": "default_policy",
