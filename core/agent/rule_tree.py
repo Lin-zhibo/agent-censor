@@ -53,6 +53,7 @@ def build_rule_forest(settings: Mapping[str, Any]) -> dict[str, LabelTreeNode]:
             forest[domain_label] = _build_node(
                 key=config_key,
                 config=config,
+                domain=config_key,
                 level=0,
                 parent_id="",
                 parent_path=(),
@@ -65,6 +66,7 @@ def build_rule_forest(settings: Mapping[str, Any]) -> dict[str, LabelTreeNode]:
 def _build_node(
     key: str,
     config: Mapping[str, Any],
+    domain: str,
     level: int,
     parent_id: str,
     parent_path: tuple[str, ...],
@@ -81,6 +83,7 @@ def _build_node(
         node_id=node_id,
         level=level,
         label=label,
+        domain=domain,
         display_name=str(config.get("name", key)),
         description=str(config.get("description", config.get("introduction", ""))),
         parent_id=parent_id,
@@ -96,6 +99,7 @@ def _build_node(
         _build_node(
             key=child_key,
             config=child_config,
+            domain=domain,
             level=level + 1,
             parent_id=node_id,
             parent_path=path,

@@ -9,6 +9,7 @@ from .schema import (
     LabelTreeNode,
     LeafLabelHit,
     NO_ISSUE_REASON,
+    NO_ROUTE_REASON,
     RootAgentResult,
 )
 from .tool import AgentToolbox, LocalRuleToolbox
@@ -21,12 +22,23 @@ class LeafAgent:
         self.name = f"{node.label}LeafAgent"
 
     def run(self, context: AuditContext) -> LeafLabelHit:
+        route_decision = self.toolbox.model_route(context)
+        model_result = self.toolbox.run_model_inference(context, route_decision)
+        policy_rules = self.toolbox.query_policy_rule(context, self.node)
+        rule_result = self.toolbox.evaluate_rule(context, self.node)
+        rag_result = self.toolbox.graph_rag_search(context, [self.node.label])
         result = self.toolbox.evaluate_leaf(context, self.node)
         context.audit_events.append(
             {
                 "agent": self.name,
                 "node_id": self.node.node_id,
                 "level": self.node.level,
+                "domain": self.node.domain,
+                "model_route": route_decision.to_dict(),
+                "model_inference": model_result.to_dict(),
+                "policy_rules": policy_rules.to_dict(),
+                "rule_result": rule_result.to_dict(),
+                "graph_rag": rag_result.to_dict(),
                 "result": result.to_contract(),
                 "path": list(self.node.path),
             }
@@ -39,99 +51,69 @@ class TreeAgent:
         self,
         node: LabelTreeNode,
         children: list["TreeAgent | LeafAgent"],
+        toolbox: AgentToolbox,
     ):
         self.node = node
         self.children = children
+        self.toolbox = toolbox
         self.name = f"{node.label.title()}Agent"
 
     def run(self, context: AuditContext) -> IntermediateAgentResult:
-        labels: list[str] = []
-        hits: list[LeafLabelHit] = []
-        child_results: list[Mapping[str, Any]] = []
-        reasons: list[str] = []
-
-        for child in self.children:
-            result = child.run(context)
-            if isinstance(result, LeafLabelHit):
-                child_results.append(result.to_contract())
-                if result.is_hit:
-                    labels.append(result.label)
-                    hits.append(result)
-                    if result.reason and result.reason != NO_ISSUE_REASON:
-                        reasons.append(result.reason)
-            else:
-                child_results.append(result.to_contract())
-                labels.extend(result.label)
-                hits.extend(result.hits)
-                if result.reason and result.reason != NO_ISSUE_REASON:
-                    reasons.append(result.reason)
-
-        reason = "；".join(reasons) if reasons else NO_ISSUE_REASON
-        aggregate = IntermediateAgentResult(
-            label=labels,
-            reason=reason,
-            node_id=self.node.node_id,
-            hits=hits,
-            child_results=child_results,
+        route_result = _route_node(
+            context=context,
+            toolbox=self.toolbox,
+            node=self.node,
+            children=self.children,
+            agent_name=self.name,
         )
-        context.audit_events.append(
-            {
-                "agent": self.name,
-                "node_id": self.node.node_id,
-                "level": self.node.level,
-                "labels": list(labels),
-                "reason": reason,
-                "child_count": len(self.children),
-            }
-        )
-        return aggregate
+        return route_result
 
 
 class RootAgent:
     def __init__(
         self,
-        security_agent: TreeAgent | None,
-        ecosystem_agent: TreeAgent | None,
+        children: list[TreeAgent | LeafAgent],
+        toolbox: AgentToolbox,
     ):
-        self.security_agent = security_agent
-        self.ecosystem_agent = ecosystem_agent
+        self.children = children
+        self.toolbox = toolbox
         self.name = "RootAgent"
 
     def run(self, context: AuditContext) -> RootAgentResult:
-        security_result = (
-            self.security_agent.run(context)
-            if self.security_agent is not None
-            else _empty_result("SECURITY")
-        )
-        ecosystem_result = (
-            self.ecosystem_agent.run(context)
-            if self.ecosystem_agent is not None
-            else _empty_result("ECOSYSTEM")
+        root_result = _route_node(
+            context=context,
+            toolbox=self.toolbox,
+            node=None,
+            children=self.children,
+            agent_name=self.name,
         )
 
-        final_decision, suggested_action = _decide(
-            security_result.hits,
-            ecosystem_result.hits,
+        leaf_results = list(root_result.hits)
+        security_labels = [hit.label for hit in leaf_results if hit.domain == "security" and hit.is_hit]
+        ecosystem_labels = [hit.label for hit in leaf_results if hit.domain == "ecosystem" and hit.is_hit]
+        final_decision, suggested_action = _decide(leaf_results)
+        reason = _root_reason(leaf_results)
+
+        context.audit_events.append(
+            {
+                "agent": self.name,
+                "node_id": "ROOT",
+                "child_labels": list(root_result.child_labels),
+                "security_labels": list(security_labels),
+                "ecosystem_labels": list(ecosystem_labels),
+                "reason": reason,
+                "final_decision": final_decision,
+                "suggested_action": suggested_action,
+            }
         )
-        reason = _root_reason(security_result, ecosystem_result)
-        root_event = {
-            "agent": self.name,
-            "security_labels": list(security_result.label),
-            "ecosystem_labels": list(ecosystem_result.label),
-            "reason": reason,
-            "final_decision": final_decision,
-            "suggested_action": suggested_action,
-        }
-        context.audit_events.append(root_event)
 
         return RootAgentResult(
-            security_labels=list(security_result.label),
-            ecosystem_labels=list(ecosystem_result.label),
+            security_labels=security_labels,
+            ecosystem_labels=ecosystem_labels,
             reason=reason,
             final_decision=final_decision,
             suggested_action=suggested_action,
-            security_result=security_result,
-            ecosystem_result=ecosystem_result,
+            root_result=root_result,
             audit_trace=list(context.audit_events),
         )
 
@@ -148,17 +130,15 @@ class MultiAgentModerator:
     ) -> "MultiAgentModerator":
         forest = build_rule_forest(settings)
         toolbox = toolbox or LocalRuleToolbox()
-        security_agent = (
-            _build_agent(forest["SECURITY"], toolbox, force_tree=True)
-            if "SECURITY" in forest
-            else None
-        )
-        ecosystem_agent = (
-            _build_agent(forest["ECOSYSTEM"], toolbox, force_tree=True)
-            if "ECOSYSTEM" in forest
-            else None
-        )
-        return cls(RootAgent(security_agent, ecosystem_agent))
+
+        root_children: list[TreeAgent | LeafAgent] = []
+        for domain_label in ("SECURITY", "ECOSYSTEM"):
+            domain_root = forest.get(domain_label)
+            if domain_root is None:
+                continue
+            root_children.extend(_build_agent(child, toolbox) for child in domain_root.children)
+
+        return cls(RootAgent(root_children, toolbox))
 
     @classmethod
     def from_settings_file(
@@ -172,50 +152,110 @@ class MultiAgentModerator:
         if isinstance(context, AuditContext):
             audit_context = context
         else:
-            audit_context = AuditContext(**context)
+            payload = dict(context)
+            payload.setdefault("trace_id", "")
+            audit_context = AuditContext(**payload)
         return self.root_agent.run(audit_context)
 
 
-def _build_agent(
-    node: LabelTreeNode,
-    toolbox: AgentToolbox,
-    force_tree: bool = False,
-) -> TreeAgent | LeafAgent:
-    if node.is_leaf and not force_tree:
+def _build_agent(node: LabelTreeNode, toolbox: AgentToolbox) -> TreeAgent | LeafAgent:
+    if node.is_leaf:
         return LeafAgent(node, toolbox)
     children = [_build_agent(child, toolbox) for child in node.children]
-    return TreeAgent(node, children)
+    return TreeAgent(node, children, toolbox)
 
 
-def _empty_result(node_id: str) -> IntermediateAgentResult:
-    return IntermediateAgentResult(label=[], reason=NO_ISSUE_REASON, node_id=node_id)
+def _route_node(
+    context: AuditContext,
+    toolbox: AgentToolbox,
+    node: LabelTreeNode | None,
+    children: list[TreeAgent | LeafAgent],
+    agent_name: str,
+) -> IntermediateAgentResult:
+    child_nodes = [child.node for child in children]
+    route_response = toolbox.route_children(context, node, child_nodes)
+    child_labels = _normalize_child_labels(route_response.data.get("child_labels"))
+    selected_children = _select_children(children, child_labels)
+
+    child_results: list[Mapping[str, Any]] = []
+    leaf_results: list[LeafLabelHit] = []
+    for child in selected_children:
+        result = child.run(context)
+        child_results.append(result.to_contract())
+        if isinstance(result, LeafLabelHit):
+            if result.is_hit or result.needs_review:
+                leaf_results.append(result)
+        else:
+            leaf_results.extend(result.hits)
+
+    reason = str(route_response.data.get("reason") or NO_ROUTE_REASON)
+    node_id = node.node_id if node is not None else "ROOT"
+    route_result = IntermediateAgentResult(
+        child_labels=child_labels,
+        reason=reason,
+        node_id=node_id,
+        hits=leaf_results,
+        child_results=child_results,
+    )
+    context.audit_events.append(
+        {
+            "agent": agent_name,
+            "node_id": node_id,
+            "level": node.level if node is not None else -1,
+            "domain": node.domain if node is not None else "",
+            "child_labels": list(child_labels),
+            "reason": reason,
+            "child_count": len(children),
+            "selected_count": len(selected_children),
+        }
+    )
+    return route_result
 
 
-def _root_reason(
-    security_result: IntermediateAgentResult,
-    ecosystem_result: IntermediateAgentResult,
-) -> str:
+def _normalize_child_labels(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item)]
+    return []
+
+
+def _select_children(
+    children: list[TreeAgent | LeafAgent],
+    child_labels: list[str],
+) -> list[TreeAgent | LeafAgent]:
+    selected: list[TreeAgent | LeafAgent] = []
+    index = 0
+    for child in children:
+        if index >= len(child_labels):
+            break
+        if child.node.label != child_labels[index]:
+            continue
+        selected.append(child)
+        index += 1
+    return selected
+
+
+def _root_reason(leaf_results: list[LeafLabelHit]) -> str:
     reasons = [
         result.reason
-        for result in (security_result, ecosystem_result)
-        if result.reason and result.reason != NO_ISSUE_REASON
+        for result in leaf_results
+        if result.reason and result.reason != NO_ISSUE_REASON and (result.is_hit or result.needs_review)
     ]
     return "；".join(reasons) if reasons else NO_ISSUE_REASON
 
 
-def _decide(
-    security_hits: list[LeafLabelHit],
-    ecosystem_hits: list[LeafLabelHit],
-) -> tuple[str, str]:
-    security_actions = {hit.action for hit in security_hits if hit.action}
-    ecosystem_actions = {hit.action for hit in ecosystem_hits if hit.action}
+def _decide(leaf_results: list[LeafLabelHit]) -> tuple[str, str]:
+    security_results = [hit for hit in leaf_results if hit.domain == "security"]
+    ecosystem_results = [hit for hit in leaf_results if hit.domain == "ecosystem"]
+
+    security_actions = {hit.action for hit in security_results if hit.is_hit and hit.action}
+    ecosystem_actions = {hit.action for hit in ecosystem_results if hit.is_hit and hit.action}
 
     if security_actions.intersection({"ban", "reject"}):
         return "reject", "ban"
-    if security_hits:
+    if any(hit.is_hit or hit.needs_review for hit in security_results):
         return "review", "manual_review"
     if ecosystem_actions.intersection({"limit", "pass_with_limit"}):
         return "pass_with_limit", "limit"
-    if ecosystem_hits:
+    if any(hit.is_hit or hit.needs_review for hit in ecosystem_results):
         return "review", "manual_review"
     return "pass", "pass"

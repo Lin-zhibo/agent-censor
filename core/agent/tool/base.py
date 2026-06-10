@@ -9,6 +9,14 @@ class AgentToolbox(Protocol):
     def evaluate_leaf(self, context: AuditContext, node: LabelTreeNode) -> LeafLabelHit:
         """Return the leaf label hit contract for one leaf node."""
 
+    def route_children(
+        self,
+        context: AuditContext,
+        node: LabelTreeNode | None,
+        child_nodes: list[LabelTreeNode],
+    ) -> ToolResponse:
+        """Select which direct child labels should be called next."""
+
     def model_route(self, context: AuditContext) -> ToolResponse:
         """Optional model routing hook for future internal API integration."""
 
