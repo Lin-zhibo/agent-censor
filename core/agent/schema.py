@@ -5,12 +5,14 @@ from typing import Any, Mapping
 
 
 NO_ISSUE_REASON = "未检出问题"
+NO_ROUTE_REASON = "当前层未发现需要继续下钻的标签路径"
 
 
 @dataclass
 class AuditContext:
     trace_id: str
     content: Any = field(default_factory=dict)
+    detail_level: str = "detailed"
     tenant_id: str = ""
     business_id: str = ""
     policy_id: str = ""
@@ -22,12 +24,23 @@ class AuditContext:
     metadata: Mapping[str, Any] = field(default_factory=dict)
     audit_events: list[dict[str, Any]] = field(default_factory=list)
 
+    @property
+    def text(self) -> str:
+        if isinstance(self.content, str):
+            return self.content
+        if isinstance(self.content, Mapping):
+            value = self.content.get("text")
+            if isinstance(value, str):
+                return value
+        return ""
+
 
 @dataclass(frozen=True)
 class LabelTreeNode:
     node_id: str
     level: int
     label: str
+    domain: str = ""
     display_name: str = ""
     description: str = ""
     parent_id: str = ""
@@ -50,6 +63,7 @@ class LeafLabelHit:
     reason: str = NO_ISSUE_REASON
     needs_review: bool = False
     node_id: str = ""
+    domain: str = ""
     path: tuple[str, ...] = field(default_factory=tuple)
     evidence: tuple[Mapping[str, Any], ...] = field(default_factory=tuple)
     action: str = ""
@@ -60,22 +74,24 @@ class LeafLabelHit:
         return bool(self.label)
 
     def to_contract(self) -> dict[str, Any]:
-        payload: dict[str, Any] = {"label": self.label, "reason": self.reason}
-        if self.needs_review:
-            payload["needs_review"] = True
-        return payload
+        return {
+            "label": self.label,
+            "reason": self.reason,
+            "needs_review": self.needs_review,
+            "evidence": [dict(item) for item in self.evidence],
+        }
 
 
 @dataclass(frozen=True)
 class IntermediateAgentResult:
-    label: list[str]
+    child_labels: list[str]
     reason: str
     node_id: str = ""
     hits: list[LeafLabelHit] = field(default_factory=list)
     child_results: list[Mapping[str, Any]] = field(default_factory=list)
 
     def to_contract(self) -> dict[str, Any]:
-        return {"label": list(self.label), "reason": self.reason}
+        return {"child_labels": list(self.child_labels), "reason": self.reason}
 
 
 @dataclass(frozen=True)
@@ -85,8 +101,7 @@ class RootAgentResult:
     reason: str
     final_decision: str
     suggested_action: str
-    security_result: IntermediateAgentResult
-    ecosystem_result: IntermediateAgentResult
+    root_result: IntermediateAgentResult
     audit_trace: list[Mapping[str, Any]] = field(default_factory=list)
 
     def to_contract(self) -> dict[str, Any]:
