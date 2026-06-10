@@ -15,7 +15,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Callable, Iterable, Mapping
 from urllib.error import HTTPError, URLError
-from urllib.parse import urldefrag, urljoin, urlparse
+from urllib.parse import quote, urldefrag, urljoin, urlparse, urlunparse
 from urllib.request import Request, urlopen
 from urllib.robotparser import RobotFileParser
 
@@ -438,7 +438,10 @@ def normalize_url(url: str) -> str:
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"}:
         return ""
-    return parsed.geturl()
+    netloc = parsed.netloc.encode("idna").decode("ascii")
+    path = quote(parsed.path, safe="/%:@")
+    query = quote(parsed.query, safe="=&[];,/:+?%@")
+    return urlunparse((parsed.scheme, netloc, path, "", query, ""))
 
 
 def normalize_text(text: str) -> str:

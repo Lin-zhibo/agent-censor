@@ -1,0 +1,11 @@
+# Wikimedia 中文普通页面。避开 /w/、/api/、Special: 等动态或特殊路径。
+# 适合中文通用文本验证集。
+https://zh.wikipedia.org/wiki/人工智能
+https://zh.wikipedia.org/wiki/机器学习
+https://zh.wikipedia.org/wiki/网络安全
+https://zh.wikipedia.org/wiki/计算机视觉
+https://zh.wikipedia.org/wiki/自然语言处理
+https://zh.wikipedia.org/wiki/内容审查
+https://zh.wikisource.org/wiki/論語
+https://zh.wikisource.org/wiki/孟子
+https://zh.wikisource.org/wiki/孫子兵法

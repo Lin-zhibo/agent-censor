@@ -1,0 +1,14 @@
+# 中文社交平台授权采集模板。
+# 默认全部注释，不会被脚本读取。只有在你有授权、页面公开允许、且 robots 检查通过时，才取消注释。
+#
+# 小红书、微博、知乎等平台经常存在登录墙、安全验证、反爬限制或 robots 限制；
+# 它们不能作为默认实验配置直接批量爬。
+#
+# 小红书笔记 URL 示例：
+# https://www.xiaohongshu.com/explore/<note_id>
+#
+# 微博公开帖子 URL 示例：
+# https://weibo.com/<uid>/<mid>
+#
+# 知乎问题/回答 URL 示例：
+# https://www.zhihu.com/question/<question_id>

@@ -42,6 +42,14 @@ class ValidationCrawlerTest(unittest.TestCase):
         self.assertNotIn("secret", text)
         self.assertEqual(links, ["https://example.test/next"])
 
+    def test_normalize_url_encodes_unicode_path(self):
+        url = crawler_module.normalize_url("https://zh.wikipedia.org/wiki/人工智能#top")
+
+        self.assertEqual(
+            url,
+            "https://zh.wikipedia.org/wiki/%E4%BA%BA%E5%B7%A5%E6%99%BA%E8%83%BD",
+        )
+
     def test_crawler_writes_validation_jsonl_and_raw_text(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

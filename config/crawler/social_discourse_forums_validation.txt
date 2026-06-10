@@ -1,0 +1,7 @@
+# 公开 Discourse 社区论坛。属于公开社区讨论/用户生成内容，不是论文或百科文本。
+# 运行前仍由脚本检查 robots；建议低速、小批量采集。
+# 适合中文/英文混合社区讨论、问答、争议帖审核实验。
+https://discuss.python.org/latest
+https://forum.djangoproject.com/latest
+https://meta.discourse.org/latest
+https://community.openstreetmap.org/latest
