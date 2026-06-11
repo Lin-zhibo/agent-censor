@@ -45,7 +45,6 @@ class LabelTreeNode:
     description: str = ""
     parent_id: str = ""
     path: tuple[str, ...] = field(default_factory=tuple)
-    keywords: tuple[str, ...] = field(default_factory=tuple)
     rule_ids: tuple[str, ...] = field(default_factory=tuple)
     default_action: str = ""
     action_priority: int = 0

@@ -78,48 +78,6 @@ BOARD_RISK_CATEGORIES = {
     "t": ["illegal"],
     "b": ["adult", "violence", "illegal", "privacy"],
 }
-RISK_KEYWORDS = {
-    "adult": [
-        "adult",
-        "explicit",
-        "nsfw",
-        "escort",
-        "hookup",
-        "dating",
-        "onlyfans",
-    ],
-    "violence": [
-        "attack",
-        "blood",
-        "fight",
-        "kill",
-        "revenge",
-        "shoot",
-        "weapon",
-    ],
-    "illegal": [
-        "counterfeit",
-        "crack",
-        "drug",
-        "exploit",
-        "fraud",
-        "leak",
-        "piracy",
-        "scam",
-        "stolen",
-    ],
-    "privacy": [
-        "address",
-        "dox",
-        "doxx",
-        "email",
-        "ip address",
-        "personal info",
-        "phone",
-    ],
-}
-
-
 EMAIL_RE = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 IPV4_RE = re.compile(
     r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b"
@@ -607,7 +565,7 @@ def extract_candidates(
         if not combined_text:
             continue
         pii_text, pii_redacted = redact_pii(combined_text)
-        categories, labels = classify_candidate(board, pii_text, pii_redacted)
+        categories, labels = classify_candidate(board, pii_redacted)
         if not categories:
             continue
         sanitized_text, operational_redacted = redact_operational_details(pii_text, categories)
@@ -637,14 +595,9 @@ def prepare_candidate(candidate: PostCandidate, min_text_chars: int) -> PostCand
 
 def classify_candidate(
     board: str,
-    text: str,
     pii_redacted: bool,
 ) -> tuple[list[str], list[str]]:
-    lower_text = text.lower()
     categories = set(BOARD_RISK_CATEGORIES.get(board, []))
-    for category, keywords in RISK_KEYWORDS.items():
-        if any(keyword in lower_text for keyword in keywords):
-            categories.add(category)
     if pii_redacted:
         categories.add("privacy")
     ordered_categories = [category for category in RISK_ORDER if category in categories]

@@ -1,4 +1,8 @@
+import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
 
 from core.agent import (
     AuditContext,
@@ -7,6 +11,7 @@ from core.agent import (
     ToolResponse,
     build_rule_forest,
 )
+from core.agent.logging import reset_agent_logger
 
 
 class OrderedToolbox:
@@ -57,6 +62,58 @@ class OrderedToolbox:
         return LeafLabelHit(label=node.label, reason=f"hit {node.label}", domain=node.domain, node_id=node.node_id)
 
 
+class ScriptedToolbox(OrderedToolbox):
+    def __init__(
+        self,
+        routes: dict[str, list[str]] | None = None,
+        hit_labels: set[str] | None = None,
+    ):
+        super().__init__()
+        self.routes = routes or {}
+        self.hit_labels = hit_labels or set()
+
+    def route_children(self, context, node, child_nodes):
+        self.calls.append("route_children")
+        key = node.label if node is not None else "ROOT"
+        child_labels = self.routes.get(key, [child.label for child in child_nodes])
+        valid = {child.label for child in child_nodes}
+        return ToolResponse(
+            status="success",
+            data={
+                "child_labels": [label for label in child_labels if label in valid],
+                "reason": "scripted route",
+            },
+            trace_id=context.trace_id,
+        )
+
+    def evaluate_leaf(self, context, node):
+        self.calls.append("evaluate_leaf")
+        if node.label not in self.hit_labels:
+            return LeafLabelHit(label="", reason="未检出问题", domain=node.domain, node_id=node.node_id)
+        return LeafLabelHit(label=node.label, reason=f"hit {node.label}", domain=node.domain, node_id=node.node_id)
+
+
+class DebugRouteToolbox(ScriptedToolbox):
+    def route_children(self, context, node, child_nodes):
+        self.calls.append("route_children")
+        key = node.label if node is not None else "ROOT"
+        raw_labels = self.routes.get(key, [child.label for child in child_nodes])
+        valid = [child.label for child in child_nodes]
+        selected = [label for label in raw_labels if label in valid]
+        rejected = [label for label in raw_labels if label not in valid]
+        return ToolResponse(
+            status="success",
+            data={
+                "child_labels": selected,
+                "reason": "debug route",
+                "raw_child_labels": raw_labels,
+                "rejected_child_labels": rejected,
+                "valid_child_labels": valid,
+            },
+            trace_id=context.trace_id,
+        )
+
+
 class MultiAgentModuleTest(unittest.TestCase):
     def test_builds_security_and_ecosystem_trees_from_settings(self):
         settings = {
@@ -66,7 +123,6 @@ class MultiAgentModuleTest(unittest.TestCase):
                         "name": "Porn",
                         "nudity": {
                             "name": "Nudity",
-                            "keywords": ["naked"],
                             "default_action": "ban",
                         },
                     }
@@ -74,7 +130,6 @@ class MultiAgentModuleTest(unittest.TestCase):
                 "ecosystem": {
                     "ad": {
                         "spam": {
-                            "keywords": ["promo"],
                             "default_action": "limit",
                         }
                     }
@@ -90,13 +145,23 @@ class MultiAgentModuleTest(unittest.TestCase):
         self.assertEqual(forest["SECURITY"].children[0].children[0].label, "NUDITY")
         self.assertEqual(forest["ECOSYSTEM"].children[0].children[0].label, "SPAM")
 
+    def test_moderator_requires_explicit_toolbox(self):
+        settings = {
+            "rules": {
+                "security": {"porn": {"nudity": {}}},
+                "ecosystem": {},
+            }
+        }
+
+        with self.assertRaises(ValueError):
+            MultiAgentModerator.from_settings(settings)
+
     def test_root_preserves_child_labels_and_security_decision_priority(self):
         settings = {
             "rules": {
                 "security": {
                     "porn": {
                         "nudity": {
-                            "keywords": ["naked"],
                             "default_action": "ban",
                         }
                     }
@@ -104,14 +169,16 @@ class MultiAgentModuleTest(unittest.TestCase):
                 "ecosystem": {
                     "ad": {
                         "spam": {
-                            "keywords": ["promo"],
                             "default_action": "limit",
                         }
                     }
                 },
             }
         }
-        moderator = MultiAgentModerator.from_settings(settings)
+        moderator = MultiAgentModerator.from_settings(
+            settings,
+            toolbox=ScriptedToolbox(hit_labels={"NUDITY", "SPAM"}),
+        )
 
         result = moderator.moderate(
             AuditContext(
@@ -130,14 +197,17 @@ class MultiAgentModuleTest(unittest.TestCase):
             "rules": {
                 "security": {
                     "group": {
-                        "label-a": {"keywords": ["first"]},
-                        "label_a": {"keywords": ["second"]},
+                        "label-a": {},
+                        "label_a": {},
                     }
                 },
                 "ecosystem": {},
             }
         }
-        moderator = MultiAgentModerator.from_settings(settings)
+        moderator = MultiAgentModerator.from_settings(
+            settings,
+            toolbox=ScriptedToolbox(hit_labels={"LABELA"}),
+        )
 
         result = moderator.moderate(
             AuditContext(trace_id="trace_2", content={"text": "first second"})
@@ -147,7 +217,7 @@ class MultiAgentModuleTest(unittest.TestCase):
         self.assertEqual(result.decision, "ban")
         self.assertEqual(result.root_result.child_labels, ["GROUP"])
 
-    def test_explicit_rule_result_hits_leaf_without_keywords(self):
+    def test_external_toolbox_can_hit_leaf_without_local_matching(self):
         settings = {
             "rules": {
                 "security": {
@@ -160,26 +230,20 @@ class MultiAgentModuleTest(unittest.TestCase):
                 "ecosystem": {},
             }
         }
-        moderator = MultiAgentModerator.from_settings(settings)
+        moderator = MultiAgentModerator.from_settings(
+            settings,
+            toolbox=ScriptedToolbox(hit_labels={"RISK"}),
+        )
 
         result = moderator.moderate(
             AuditContext(
                 trace_id="trace_3",
-                metadata={
-                    "rule_results": [
-                        {
-                            "label": "RISK",
-                            "hit": True,
-                            "reason": "rule engine hit",
-                            "action": "reject",
-                        }
-                    ]
-                },
+                metadata={"source": "external rule engine"},
             )
         )
 
         self.assertEqual(result.security_labels, ["RISK"])
-        self.assertEqual(result.reason, "rule engine hit")
+        self.assertEqual(result.reason, "hit RISK")
         self.assertEqual(result.decision, "ban")
 
     def test_labels_requested_do_not_count_as_hits(self):
@@ -188,7 +252,6 @@ class MultiAgentModuleTest(unittest.TestCase):
                 "security": {
                     "porn": {
                         "nudity": {
-                            "keywords": ["naked"],
                             "default_action": "ban",
                         }
                     }
@@ -196,7 +259,7 @@ class MultiAgentModuleTest(unittest.TestCase):
                 "ecosystem": {},
             }
         }
-        moderator = MultiAgentModerator.from_settings(settings)
+        moderator = MultiAgentModerator.from_settings(settings, toolbox=ScriptedToolbox())
 
         result = moderator.moderate(
             AuditContext(trace_id="trace_4", labels_requested=["NUDITY"])
@@ -210,16 +273,22 @@ class MultiAgentModuleTest(unittest.TestCase):
             "rules": {
                 "security": {
                     "porn": {
-                        "nudity": {"keywords": ["naked"]},
+                        "nudity": {},
                     },
                     "violence": {
-                        "injury": {"keywords": ["blood"]},
+                        "injury": {},
                     },
                 },
                 "ecosystem": {},
             }
         }
-        moderator = MultiAgentModerator.from_settings(settings)
+        moderator = MultiAgentModerator.from_settings(
+            settings,
+            toolbox=ScriptedToolbox(
+                routes={"ROOT": ["PORN"], "PORN": ["NUDITY"]},
+                hit_labels={"NUDITY"},
+            ),
+        )
 
         result = moderator.moderate(
             AuditContext(trace_id="trace_5", content={"text": "naked only"})
@@ -228,17 +297,94 @@ class MultiAgentModuleTest(unittest.TestCase):
         self.assertEqual(result.root_result.child_labels, ["PORN"])
         self.assertEqual(result.security_labels, ["NUDITY"])
 
+    def test_route_stage_reasons_are_recorded_in_audit_trace(self):
+        settings = {
+            "rules": {
+                "security": {
+                    "porn": {
+                        "nudity": {},
+                    },
+                },
+                "ecosystem": {},
+            }
+        }
+        moderator = MultiAgentModerator.from_settings(
+            settings,
+            toolbox=ScriptedToolbox(
+                routes={"ROOT": ["PORN"], "PORN": ["NUDITY"]},
+                hit_labels={"NUDITY"},
+            ),
+        )
+
+        result = moderator.moderate(
+            AuditContext(trace_id="trace_route_reason", content={"text": "naked"})
+        )
+
+        route_events = [
+            event
+            for event in result.audit_trace
+            if "child_labels" in event and "child_count" in event
+        ]
+        root_route = next(
+            event
+            for event in route_events
+            if event["agent"] == "RootAgent" and event["node_id"] == "ROOT"
+        )
+        porn_route = next(
+            event for event in route_events if event["agent"] == "PornAgent"
+        )
+        self.assertEqual(root_route["child_labels"], ["PORN"])
+        self.assertEqual(root_route["reason"], "scripted route")
+        self.assertEqual(porn_route["child_labels"], ["NUDITY"])
+        self.assertEqual(porn_route["reason"], "scripted route")
+
+    def test_route_stage_records_rejected_child_labels_for_debugging(self):
+        settings = {
+            "rules": {
+                "security": {
+                    "porn": {
+                        "nudity": {},
+                    },
+                },
+                "ecosystem": {},
+            }
+        }
+        moderator = MultiAgentModerator.from_settings(
+            settings,
+            toolbox=DebugRouteToolbox(
+                routes={"ROOT": ["SEX_SERVICE", "PORN"], "PORN": ["NUDITY"]},
+                hit_labels={"NUDITY"},
+            ),
+        )
+
+        result = moderator.moderate(
+            AuditContext(trace_id="trace_rejected_route", content={"text": "裸聊上门"})
+        )
+
+        root_route = next(
+            event
+            for event in result.audit_trace
+            if event["agent"] == "RootAgent" and event["node_id"] == "ROOT"
+        )
+        self.assertEqual(root_route["child_labels"], ["PORN"])
+        self.assertEqual(root_route["raw_child_labels"], ["SEX_SERVICE", "PORN"])
+        self.assertEqual(root_route["rejected_child_labels"], ["SEX_SERVICE"])
+        self.assertEqual(root_route["valid_child_labels"], ["PORN"])
+
     def test_moderate_dict_input_without_trace_id_uses_default(self):
         settings = {
             "rules": {
                 "security": {
                     "porn": {
-                        "nudity": {"keywords": ["naked"]},
+                        "nudity": {},
                     }
                 }
             }
         }
-        moderator = MultiAgentModerator.from_settings(settings)
+        moderator = MultiAgentModerator.from_settings(
+            settings,
+            toolbox=ScriptedToolbox(hit_labels={"NUDITY"}),
+        )
 
         result = moderator.moderate({"content": {"text": "naked"}})
 
@@ -257,7 +403,7 @@ class MultiAgentModuleTest(unittest.TestCase):
             "rules": {
                 "security": {
                     "porn": {
-                        "nudity": {"keywords": ["naked"]},
+                        "nudity": {},
                     }
                 }
             }
@@ -281,6 +427,117 @@ class MultiAgentModuleTest(unittest.TestCase):
                 "evaluate_leaf",
             ],
         )
+
+    def test_moderate_writes_readable_agent_log_by_default(self):
+        settings = {
+            "rules": {
+                "security": {
+                    "porn": {
+                        "nudity": {"default_action": "ban"},
+                    }
+                },
+                "ecosystem": {},
+            }
+        }
+        old_log_path = os.environ.get("AGENT_LOG_PATH")
+        old_log_format = os.environ.get("AGENT_LOG_FORMAT")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            log_path = Path(temp_dir) / "agent.log"
+            os.environ["AGENT_LOG_PATH"] = str(log_path)
+            os.environ.pop("AGENT_LOG_FORMAT", None)
+            reset_agent_logger()
+            try:
+                moderator = MultiAgentModerator.from_settings(
+                    settings,
+                    toolbox=ScriptedToolbox(hit_labels={"NUDITY"}),
+                )
+                result = moderator.moderate(
+                    AuditContext(trace_id="trace_log", content={"text": "naked secret"})
+                )
+                reset_agent_logger()
+
+                lines = log_path.read_text(encoding="utf-8").splitlines()
+            finally:
+                reset_agent_logger()
+                if old_log_path is None:
+                    os.environ.pop("AGENT_LOG_PATH", None)
+                else:
+                    os.environ["AGENT_LOG_PATH"] = old_log_path
+                if old_log_format is None:
+                    os.environ.pop("AGENT_LOG_FORMAT", None)
+                else:
+                    os.environ["AGENT_LOG_FORMAT"] = old_log_format
+
+        self.assertTrue(any(" INFO audit.started " in line for line in lines))
+        self.assertTrue(any(" INFO agent.route.completed " in line for line in lines))
+        self.assertTrue(any(" INFO tool.call.completed " in line for line in lines))
+        self.assertTrue(any(" INFO agent.leaf.completed " in line for line in lines))
+        self.assertTrue(any(" INFO audit.completed " in line for line in lines))
+        self.assertFalse(any("naked secret" in line for line in lines))
+        self.assertFalse(any(line.lstrip().startswith("{") for line in lines))
+
+        completed = [line for line in lines if " INFO audit.completed " in line][-1]
+        self.assertEqual(result.decision, "ban")
+        self.assertIn("trace=trace_log", completed)
+        self.assertIn("decision=ban", completed)
+        self.assertIn("sec=[NUDITY]", completed)
+        self.assertTrue(
+            any("tool_name=route_children" in line for line in lines)
+        )
+        self.assertTrue(any("tool_name=evaluate_leaf" in line for line in lines))
+
+    def test_agent_log_supports_json_lines_format(self):
+        settings = {
+            "rules": {
+                "security": {
+                    "porn": {
+                        "nudity": {"default_action": "ban"},
+                    }
+                },
+                "ecosystem": {},
+            }
+        }
+        old_log_path = os.environ.get("AGENT_LOG_PATH")
+        old_log_format = os.environ.get("AGENT_LOG_FORMAT")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            log_path = Path(temp_dir) / "agent.jsonl"
+            os.environ["AGENT_LOG_PATH"] = str(log_path)
+            os.environ["AGENT_LOG_FORMAT"] = "json"
+            reset_agent_logger()
+            try:
+                moderator = MultiAgentModerator.from_settings(
+                    settings,
+                    toolbox=ScriptedToolbox(hit_labels={"NUDITY"}),
+                )
+                result = moderator.moderate(
+                    AuditContext(trace_id="trace_json", content={"text": "naked secret"})
+                )
+                reset_agent_logger()
+
+                lines = log_path.read_text(encoding="utf-8").splitlines()
+                records = [json.loads(line) for line in lines]
+            finally:
+                reset_agent_logger()
+                if old_log_path is None:
+                    os.environ.pop("AGENT_LOG_PATH", None)
+                else:
+                    os.environ["AGENT_LOG_PATH"] = old_log_path
+                if old_log_format is None:
+                    os.environ.pop("AGENT_LOG_FORMAT", None)
+                else:
+                    os.environ["AGENT_LOG_FORMAT"] = old_log_format
+
+        events = [record["event"] for record in records]
+        self.assertIn("audit.completed", events)
+        completed = [
+            record for record in records if record["event"] == "audit.completed"
+        ][-1]
+        self.assertEqual(result.decision, "ban")
+        self.assertEqual(completed["decision"], "ban")
+        self.assertEqual(completed["security_labels"], ["NUDITY"])
+        self.assertEqual(completed["trace_id"], "trace_json")
 
 
 if __name__ == "__main__":

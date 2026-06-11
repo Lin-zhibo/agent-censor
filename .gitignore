@@ -4,3 +4,4 @@ openspec
 data
 db
 __pycache__
+log/

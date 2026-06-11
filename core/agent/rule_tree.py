@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Mapping
@@ -18,8 +19,6 @@ STRUCTURAL_KEYS = {
     "introduction",
     "description",
     "label",
-    "keywords",
-    "keyword",
     "rule_ids",
     "rule_id",
     "default_action",
@@ -31,7 +30,15 @@ STRUCTURAL_KEYS = {
 
 
 def normalize_label(value: Any, fallback: str = "LABEL") -> str:
-    return str(value).strip() or fallback
+    raw = str(value).strip() or fallback
+    normalized = re.sub(r"[^A-Za-z0-9_]", "", raw).upper()
+    return normalized or fallback
+
+
+def normalize_key_label(value: Any, fallback: str = "LABEL") -> str:
+    raw = str(value).strip() or fallback
+    normalized = re.sub(r"[^A-Za-z0-9]", "", raw).upper()
+    return normalized or fallback
 
 
 def load_settings_file(path: str | Path) -> Mapping[str, Any]:
@@ -71,7 +78,10 @@ def _build_node(
     fallback_label: str,
     sibling_index: int,
 ) -> LabelTreeNode:
-    label = normalize_label(config.get("label", key), fallback=fallback_label)
+    if "label" in config:
+        label = normalize_label(config.get("label"), fallback=fallback_label)
+    else:
+        label = normalize_key_label(key, fallback=fallback_label)
     if level == 0:
         label = fallback_label
 
@@ -86,7 +96,6 @@ def _build_node(
         description=str(config.get("description", config.get("introduction", ""))),
         parent_id=parent_id,
         path=path,
-        keywords=_as_tuple(config.get("keywords", config.get("keyword", ()))),
         rule_ids=_as_tuple(config.get("rule_ids", config.get("rule_id", ()))),
         default_action=str(config.get("default_action", config.get("action", ""))).lower(),
         action_priority=_as_int(config.get("action_priority", 0)),

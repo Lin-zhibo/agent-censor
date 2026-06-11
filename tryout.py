@@ -48,17 +48,22 @@ def load_env(path: str = "config/.env") -> dict[str, str]:
 _SYSTEM = "你是内容安全审核助手。严格按 JSON 格式返回，不说废话。"
 
 _ROUTE_PROMPT = """{parent_ctx}
-请判断以下内容可以路由到哪些子类别做进一步审核（可多选，宁少勿多）。
+请判断以下内容可以路由到哪些子类别做进一步审核（可多选）。
+只要内容可能命中某个子类别或其下级规则，就必须选择该子类别继续下钻；宁可多选，不要在上层提前放过。
 
 【可选子类别】
 {children}
+
+【合法标签清单（只能从以下标签中选择）】
+{valid_labels}
 
 【待审核内容】
 {content}
 
 返回 JSON：
-{{"labels": ["label1"], "reason": "选择理由（30字以内）"}}
-如都不相关返回 {{"labels": [], "reason": "与所有子类别无关"}}"""
+{{"child_labels": [{label_examples}], "reason": "选择理由（30字以内）"}}
+其中 child_labels 的每个元素必须是【合法标签清单】中的英文标签。
+如都不相关返回 {{"child_labels": [], "reason": "与所有子类别无关"}}"""
 
 _LEAF_PROMPT = """请判断以下内容是否违反指定规则。
 
@@ -73,13 +78,57 @@ _LEAF_PROMPT = """请判断以下内容是否违反指定规则。
 注意：正常讨论、科普、新闻、学术研究、合法批评不命中。不确定就判 false。"""
 
 
+def _format_child_knowledge(child: LabelTreeNode) -> str:
+    lines = []
+    desc = _first_rule_line(child.description) or child.description or child.display_name
+    lines.append(f"   节点说明：{desc[:260]}")
+
+    if child.children:
+        snippets = []
+        for leaf in _iter_leaves(child):
+            leaf_desc = _first_rule_line(leaf.description) or leaf.description or leaf.display_name
+            snippets.append(f"{leaf.display_name}（{leaf_desc[:120]}）")
+        if snippets:
+            lines.append(f"   [注意] 以下为下级规则覆盖范围，仅供理解本节点含义，不可直接选择：{'；'.join(snippets)[:1600]}")
+    return "\n".join(lines)
+
+
+def _iter_leaves(node: LabelTreeNode):
+    if node.is_leaf:
+        yield node
+        return
+    for child in node.children:
+        yield from _iter_leaves(child)
+
+
+def _first_rule_line(description: str) -> str:
+    if not description:
+        return ""
+    first = description.splitlines()[0].strip()
+    if first.startswith("1. 拦截条件："):
+        return first.removeprefix("1. 拦截条件：").strip()
+    return first
+
+
+def _extract_route_labels(parsed: dict[str, Any]) -> tuple[list[str], bool]:
+    """返回 (labels, parse_ok). parse_ok=False 表示 labels 字段不是合法列表."""
+    raw = parsed.get("child_labels")
+    if raw is None:
+        raw = parsed.get("labels", [])
+    if not isinstance(raw, list):
+        return [], False
+    labels = [str(label).strip() for label in raw if str(label).strip()]
+    return labels, True
+
+
 class DashScopeToolbox:
     """每层用 AI 模型做路由和判定，不改动 MultiAgentModerator 的树形架构"""
 
-    def __init__(self, env: dict[str, str]):
+    def __init__(self, env: dict[str, str], max_retries: int = 2):
         self.api_key = env.get("PRO_API_KEY", "")
         self.base_url = env.get("PRO_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
         self.model = env.get("PRO_MODEL_NAME", "qwen-plus")
+        self.max_retries = max_retries
         self.call_count = 0  # 统计 API 调用次数
 
     # ── 核心协议方法 ──────────────────────────────────
@@ -93,7 +142,7 @@ class DashScopeToolbox:
         """在当前树节点，决定路由到哪些子节点。
 
         关键：只看到 child_nodes（当前节点的直接子节点，通常 3-15 个），
-        不是全量规则。
+        不是全量规则。非法标签触发重试，耗尽后兜底全选。
         """
         text = context.text
         node_id = node.node_id if node else "ROOT"
@@ -111,9 +160,9 @@ class DashScopeToolbox:
                 trace_id=context.trace_id,
             )
         if not self.api_key:
-            return self._local_route(context, node, child_nodes)
+            return self._no_route(context, node, "未配置模型 API，无法执行模型路由")
 
-        # 构建当前节点的上下文 + 子节点列表
+        # 构建上下文
         parent_ctx = ""
         if node:
             parent_ctx = f"当前审核节点：{node.display_name}"
@@ -122,39 +171,92 @@ class DashScopeToolbox:
 
         child_lines = []
         for i, child in enumerate(child_nodes, 1):
-            desc = child.description or child.display_name
             leaf_tag = " [叶子]" if child.is_leaf else ""
             child_lines.append(f"{i}. {child.label}{leaf_tag}（{child.display_name}）")
-            child_lines.append(f"   {desc[:400]}")
+            child_lines.append(_format_child_knowledge(child))
 
-        prompt = _ROUTE_PROMPT.format(
+        # 构建合法标签集合和动态 prompt 参数
+        valid = {c.label for c in child_nodes}
+        valid_labels_str = "、".join(sorted(valid))
+        sorted_valid = sorted(valid)
+        label_examples = '"' + '", "'.join(sorted_valid[:2]) + '"' if sorted_valid else '""'
+
+        base_prompt = _ROUTE_PROMPT.format(
             parent_ctx=parent_ctx,
             children="\n".join(child_lines),
+            valid_labels=valid_labels_str,
+            label_examples=label_examples,
             content=text,
         )
 
-        try:
-            parsed = self._chat(prompt)
-        except Exception:
-            return self._local_route(context, node, child_nodes)
+        # 重试循环
+        last_reason = NO_ROUTE_REASON
+        for attempt in range(self.max_retries + 1):
+            if attempt == 0:
+                prompt = base_prompt
+            else:
+                feedback = (
+                    f"\n\n[错误反馈] 你上次返回的标签不在合法列表中。"
+                    f"合法标签只有：{valid_labels_str}。请重新选择。"
+                )
+                prompt = base_prompt + feedback
 
-        if "error" in parsed:
-            return self._local_route(context, node, child_nodes)
+            try:
+                parsed = self._chat(prompt)
+            except Exception:
+                if attempt < self.max_retries:
+                    continue
+                return self._route_all(context, node, child_nodes,
+                                       reason="LLM 连续调用失败，兜底全选")
 
-        selected = [str(l) for l in parsed.get("labels", []) if str(l)]
-        valid = {c.label for c in child_nodes}
-        selected = [l for l in selected if l in valid]
-        reason = str(parsed.get("reason", NO_ROUTE_REASON))
+            if "error" in parsed:
+                if attempt < self.max_retries:
+                    continue
+                return self._route_all(context, node, child_nodes,
+                                       reason="LLM 返回错误，兜底全选")
 
-        return ToolResponse(
-            status="success",
-            data={
-                "node_id": node_id,
-                "child_labels": selected,
-                "reason": reason,
-            },
-            trace_id=context.trace_id,
-        )
+            raw_labels, parse_ok = _extract_route_labels(parsed)
+            last_reason = str(parsed.get("reason", NO_ROUTE_REASON))
+
+            # 解析失败 → 重试
+            if not parse_ok:
+                if attempt < self.max_retries:
+                    continue
+                return self._route_all(context, node, child_nodes,
+                                       reason="LLM 返回格式错误，兜底全选")
+
+            # 空选是合法决策 → 立即返回
+            if not raw_labels:
+                return ToolResponse(
+                    status="success",
+                    data={
+                        "node_id": node_id,
+                        "child_labels": [],
+                        "reason": last_reason,
+                    },
+                    trace_id=context.trace_id,
+                )
+
+            rejected = [label for label in raw_labels if label not in valid]
+
+            # 全部合法 → 立即返回
+            if not rejected:
+                return ToolResponse(
+                    status="success",
+                    data={
+                        "node_id": node_id,
+                        "child_labels": raw_labels,
+                        "reason": last_reason,
+                        "raw_child_labels": raw_labels,
+                    },
+                    trace_id=context.trace_id,
+                )
+
+            # 有非法标签 → 继续重试
+
+        # 循环耗尽 → fallback 全选
+        return self._route_all(context, node, child_nodes,
+                               reason=f"重试 {self.max_retries} 次仍返回非法标签，兜底全选")
 
     def evaluate_leaf(self, context: AuditContext, node: LabelTreeNode) -> LeafLabelHit:
         """判定单条叶子规则。一次只判一条，prompt 极度聚焦。"""
@@ -163,7 +265,7 @@ class DashScopeToolbox:
         if not text.strip():
             return self._no_hit(node)
         if not self.api_key:
-            return self._local_leaf(context, node)
+            return self._no_hit(node)
 
         prompt = _LEAF_PROMPT.format(
             label=node.label,
@@ -175,10 +277,10 @@ class DashScopeToolbox:
         try:
             parsed = self._chat(prompt)
         except Exception:
-            return self._local_leaf(context, node)
+            return self._no_hit(node)
 
         if "error" in parsed:
-            return self._local_leaf(context, node)
+            return self._no_hit(node)
 
         if not parsed.get("hit", False):
             return self._no_hit(node)
@@ -257,45 +359,37 @@ class DashScopeToolbox:
     def _no_hit(self, node: LabelTreeNode) -> LeafLabelHit:
         return LeafLabelHit(label="", reason=NO_ISSUE_REASON, node_id=node.node_id, domain=node.domain, path=node.path)
 
-    def _keyword_match(self, text: str, keywords: tuple[str, ...]) -> str:
-        t = text.lower()
-        for kw in keywords:
-            if kw and kw.lower() in t:
-                return kw
-        return ""
-
-    def _local_leaf(self, context: AuditContext, node: LabelTreeNode) -> LeafLabelHit:
-        text = context.text
-        kw = self._keyword_match(text, node.keywords)
-        if kw:
-            return LeafLabelHit(
-                label=node.label, reason=f"命中关键词: {kw}",
-                node_id=node.node_id, domain=node.domain, path=node.path,
-                evidence=({"type": "keyword", "content": kw},),
-                action=node.default_action,
-            )
-        return self._no_hit(node)
-
-    def _local_route(self, context: AuditContext, node: LabelTreeNode | None, child_nodes: list[LabelTreeNode]) -> ToolResponse:
-        text = context.text.lower()
-        labels, reasons = [], []
-        for child in child_nodes:
-            kw = self._keyword_match(text, child.keywords)
-            if kw:
-                labels.append(child.label)
-                reasons.append(f"{child.label}: kw {kw}")
-            else:
-                for sub in child.children:
-                    skw = self._keyword_match(text, sub.keywords)
-                    if skw:
-                        labels.append(child.label)
-                        reasons.append(f"{child.label}: sub kw {skw}")
-                        break
+    def _route_all(
+        self,
+        context: AuditContext,
+        node: LabelTreeNode | None,
+        child_nodes: list[LabelTreeNode],
+        reason: str,
+    ) -> ToolResponse:
+        """兜底：选择当前层所有子节点继续下钻."""
         return ToolResponse(
             status="success",
             data={
-                "child_labels": labels,
-                "reason": "；".join(reasons) if reasons else NO_ROUTE_REASON,
+                "node_id": node.node_id if node else "ROOT",
+                "child_labels": [c.label for c in child_nodes],
+                "reason": reason,
+                "fallback": True,
+            },
+            trace_id=context.trace_id,
+        )
+
+    def _no_route(
+        self,
+        context: AuditContext,
+        node: LabelTreeNode | None,
+        reason: str,
+    ) -> ToolResponse:
+        return ToolResponse(
+            status="success",
+            data={
+                "node_id": node.node_id if node is not None else "ROOT",
+                "child_labels": [],
+                "reason": reason or NO_ROUTE_REASON,
             },
             trace_id=context.trace_id,
         )
@@ -315,17 +409,28 @@ def print_trace(trace: list[dict], indent: int = 0):
         domain = event.get("domain", "")
         domain_tag = f"[{domain}]" if domain else ""
 
-        if agent == "RootAgent":
-            print(f"{prefix}[Root] decision={event.get('decision','?')}")
-        elif "child_labels" in event and "child_count" in event:
-            # 中间节点（路由）
+        if "child_labels" in event and "child_count" in event:
+            # Root 和中间节点路由。RootAgent 也会产生路由事件，必须先于最终汇总事件识别。
             selected = event.get("selected_count", 0)
             total = event.get("child_count", 0)
             reason = event.get("reason", "")
             children = event.get("child_labels", [])
-            print(f"{prefix}[L{level}] {agent} {domain_tag} -> 路由到 {selected}/{total} 子节点: {children}")
+            rejected = event.get("rejected_child_labels", [])
+            if agent == "RootAgent":
+                route_name = "[Root路由]"
+            else:
+                route_name = f"[L{level}路由]"
+            print(f"{prefix}{route_name} {agent} {domain_tag} -> 路由到 {selected}/{total} 子节点: {children}")
             if reason:
-                print(f"{prefix}       理由: {reason}")
+                print(f"{prefix}       路由理由: {reason}")
+            if rejected:
+                print(f"{prefix}       丢弃无效label: {rejected}")
+                print(f"{prefix}       当前层合法label: {event.get('valid_child_labels', [])}")
+        elif agent == "RootAgent":
+            print(f"{prefix}[Root汇总] decision={event.get('decision','?')}")
+            reason = event.get("reason", "")
+            if reason and reason != NO_ISSUE_REASON:
+                print(f"{prefix}       汇总理由: {reason}")
         elif "result" in event:
             # 叶子节点（判定）
             result = event.get("result", {})
@@ -348,7 +453,18 @@ def main():
         print("[错误] 未配置 PRO_API_KEY，请在 config/.env 中设置")
         return
 
-    toolbox = DashScopeToolbox(env)
+    # 读取路由重试配置
+    settings_path = Path("config/settings.json")
+    max_retries = 2
+    if settings_path.exists():
+        try:
+            settings = json.loads(settings_path.read_text("utf-8"))
+            raw = int(settings.get("route_max_retries", 2))
+            max_retries = max(0, min(raw, 5))
+        except (json.JSONDecodeError, (TypeError, ValueError)):
+            max_retries = 2
+
+    toolbox = DashScopeToolbox(env, max_retries=max_retries)
     moderator = MultiAgentModerator.from_settings_file("config/settings.json", toolbox=toolbox)
 
     print(f"API:  {env['PRO_URL']}")
