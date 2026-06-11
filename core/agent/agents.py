@@ -91,7 +91,7 @@ class RootAgent:
         leaf_results = list(root_result.hits)
         security_labels = [hit.label for hit in leaf_results if hit.domain == "security" and hit.is_hit]
         ecosystem_labels = [hit.label for hit in leaf_results if hit.domain == "ecosystem" and hit.is_hit]
-        final_decision, suggested_action = _decide(leaf_results)
+        decision = _decide(leaf_results)
         reason = _root_reason(leaf_results)
 
         context.audit_events.append(
@@ -102,8 +102,7 @@ class RootAgent:
                 "security_labels": list(security_labels),
                 "ecosystem_labels": list(ecosystem_labels),
                 "reason": reason,
-                "final_decision": final_decision,
-                "suggested_action": suggested_action,
+                "decision": decision,
             }
         )
 
@@ -111,8 +110,7 @@ class RootAgent:
             security_labels=security_labels,
             ecosystem_labels=ecosystem_labels,
             reason=reason,
-            final_decision=final_decision,
-            suggested_action=suggested_action,
+            decision=decision,
             root_result=root_result,
             audit_trace=list(context.audit_events),
         )
@@ -243,19 +241,12 @@ def _root_reason(leaf_results: list[LeafLabelHit]) -> str:
     return "；".join(reasons) if reasons else NO_ISSUE_REASON
 
 
-def _decide(leaf_results: list[LeafLabelHit]) -> tuple[str, str]:
-    security_results = [hit for hit in leaf_results if hit.domain == "security"]
-    ecosystem_results = [hit for hit in leaf_results if hit.domain == "ecosystem"]
-
-    security_actions = {hit.action for hit in security_results if hit.is_hit and hit.action}
-    ecosystem_actions = {hit.action for hit in ecosystem_results if hit.is_hit and hit.action}
-
-    if security_actions.intersection({"ban", "reject"}):
-        return "reject", "ban"
-    if any(hit.is_hit or hit.needs_review for hit in security_results):
-        return "review", "manual_review"
-    if ecosystem_actions.intersection({"limit", "pass_with_limit"}):
-        return "pass_with_limit", "limit"
-    if any(hit.is_hit or hit.needs_review for hit in ecosystem_results):
-        return "review", "manual_review"
-    return "pass", "pass"
+def _decide(leaf_results: list[LeafLabelHit]) -> str:
+    """统一口径：security → ban，ecosystem → limit，ban > limit > pass"""
+    security_hit = any(hit.is_hit for hit in leaf_results if hit.domain == "security")
+    ecosystem_hit = any(hit.is_hit for hit in leaf_results if hit.domain == "ecosystem")
+    if security_hit:
+        return "ban"
+    if ecosystem_hit:
+        return "limit"
+    return "pass"

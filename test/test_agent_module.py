@@ -122,8 +122,7 @@ class MultiAgentModuleTest(unittest.TestCase):
 
         self.assertEqual(result.security_labels, ["NUDITY"])
         self.assertEqual(result.ecosystem_labels, ["SPAM"])
-        self.assertEqual(result.final_decision, "reject")
-        self.assertEqual(result.suggested_action, "ban")
+        self.assertEqual(result.decision, "ban")
         self.assertEqual(result.root_result.child_labels, ["PORN", "AD"])
 
     def test_intermediate_agent_does_not_dedupe_or_sort_labels(self):
@@ -145,8 +144,7 @@ class MultiAgentModuleTest(unittest.TestCase):
         )
 
         self.assertEqual(result.security_labels, ["LABELA", "LABELA"])
-        self.assertEqual(result.final_decision, "review")
-        self.assertEqual(result.suggested_action, "manual_review")
+        self.assertEqual(result.decision, "ban")
         self.assertEqual(result.root_result.child_labels, ["GROUP"])
 
     def test_explicit_rule_result_hits_leaf_without_keywords(self):
@@ -182,7 +180,7 @@ class MultiAgentModuleTest(unittest.TestCase):
 
         self.assertEqual(result.security_labels, ["RISK"])
         self.assertEqual(result.reason, "rule engine hit")
-        self.assertEqual(result.final_decision, "reject")
+        self.assertEqual(result.decision, "ban")
 
     def test_labels_requested_do_not_count_as_hits(self):
         settings = {
@@ -205,7 +203,7 @@ class MultiAgentModuleTest(unittest.TestCase):
         )
 
         self.assertEqual(result.security_labels, [])
-        self.assertEqual(result.final_decision, "pass")
+        self.assertEqual(result.decision, "pass")
 
     def test_route_only_selects_matching_first_level_branch(self):
         settings = {

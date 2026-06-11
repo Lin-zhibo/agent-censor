@@ -99,8 +99,7 @@ class RootAgentResult:
     security_labels: list[str]
     ecosystem_labels: list[str]
     reason: str
-    final_decision: str
-    suggested_action: str
+    decision: str
     root_result: IntermediateAgentResult
     audit_trace: list[Mapping[str, Any]] = field(default_factory=list)
 
@@ -109,8 +108,7 @@ class RootAgentResult:
             "security_labels": list(self.security_labels),
             "ecosystem_labels": list(self.ecosystem_labels),
             "reason": self.reason,
-            "final_decision": self.final_decision,
-            "suggested_action": self.suggested_action,
+            "decision": self.decision,
         }
 
 

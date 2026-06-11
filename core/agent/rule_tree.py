@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Mapping
@@ -32,8 +31,7 @@ STRUCTURAL_KEYS = {
 
 
 def normalize_label(value: Any, fallback: str = "LABEL") -> str:
-    normalized = re.sub(r"[^A-Za-z0-9]", "", str(value)).upper()
-    return normalized or fallback
+    return str(value).strip() or fallback
 
 
 def load_settings_file(path: str | Path) -> Mapping[str, Any]:

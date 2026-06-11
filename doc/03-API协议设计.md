@@ -184,7 +184,7 @@ flowchart LR
 ```json
 {
   "task_id": "task_0001",
-  "decision": "review",
+  "decision": "ban",
   "risk_score": 0.82,
   "labels": [
     {
@@ -241,20 +241,19 @@ flowchart LR
         "reason": "模型 PORN/SEX_BEHAVIOR 分数 0.82 超过阈值 0.8"
     }
   ],
-  "suggested_action": "manual_review",
-    "explanation": "规则和模型均提示存在色情内容风险，建议人工复核。"
+  "decision": "ban",
+    "explanation": "安全域命中 PORN/SEX_BEHAVIOR，执行封禁处置。"
 }
 ```
 
 字段说明：
 
-- `decision`：`pass`、`review`、`reject`。
+- `decision`：`ban`、`limit`、`pass`。命中 security → ban，命中 ecosystem → limit，未命中 → pass。
 - `risk_score`：综合风险分数，范围 0 到 1。
 - `labels`：详细标签和分数。
 - `evidence`：证据片段、检测框、视频时间段或 RAG 证据。
 - `model_results`：模型推理结果。
 - `rule_results`：规则命中结果。
-- `suggested_action`：建议处置动作，例如 `manual_review`、`block`、`pass_with_limit`。
 
 产生/消费关系：`ModerationResult` 由 Decision Service 产生，由 API Controller 返回给前端或外部系统；同步任务直接返回，异步任务通过 `GET /api/v1/moderation/tasks/{task_id}` 查询返回。
 
@@ -609,4 +608,4 @@ Graph RAG 检索结果在内部链路中统称为 `GraphRagEvidence`，由 Graph
 }
 ```
 
-响应 `ToolResponse.data` 返回预览后的 `decision`、`risk_score`、`labels`、`rule_results` 和 `suggested_action`，不写入正式审核结果。
+响应 `ToolResponse.data` 返回预览后的 `decision`、`risk_score`、`labels` 和 `rule_results`，不写入正式审核结果。

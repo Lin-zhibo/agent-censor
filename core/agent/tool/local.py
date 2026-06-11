@@ -166,7 +166,6 @@ class LocalRuleToolbox:
                 "risk_score": 0,
                 "labels": [],
                 "rule_results": [],
-                "suggested_action": "pass",
                 "preview_only": True,
                 "threshold_overrides": dict(threshold_overrides),
             },
