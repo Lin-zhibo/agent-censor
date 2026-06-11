@@ -15,6 +15,7 @@ from core.agent import (
     AuditContext,
     LabelTreeNode,
     LeafLabelHit,
+    LeafGraphRagIndex,
     ToolResponse,
     NO_ISSUE_REASON,
     NO_ROUTE_REASON,
@@ -70,12 +71,15 @@ _LEAF_PROMPT = """请判断以下内容是否违反指定规则。
 【规则】{label}（{name}）
 判定标准：{intro}
 
+【Graph RAG证据】
+{graph_rag_evidence}
+
 【待审核内容】
 {content}
 
 返回 JSON：
 {{"hit": true或false, "reason": "理由（30字以内）"}}
-注意：正常讨论、科普、新闻、学术研究、合法批评不命中。不确定就判 false。"""
+注意：Graph RAG只提供证据参考，不能替代你的审核判断；正常讨论、科普、新闻、学术研究、合法批评不命中。不确定就判 false。"""
 
 
 def _format_child_knowledge(child: LabelTreeNode) -> str:
@@ -110,6 +114,26 @@ def _first_rule_line(description: str) -> str:
     return first
 
 
+def _format_graph_rag_evidence(result: ToolResponse | None) -> str:
+    if result is None:
+        return "无 Graph RAG 证据。"
+    if not result.ok:
+        return "Graph RAG 检索失败，仅按规则定义判断。"
+    data = result.data
+    summary = str(data.get("evidence_summary", "")).strip()
+    hits = data.get("hits", [])
+    lines = [summary or "Graph RAG 未召回证据。"]
+    if isinstance(hits, list):
+        for hit in hits[:3]:
+            if not isinstance(hit, dict):
+                continue
+            node_type = hit.get("node_type", "")
+            title = hit.get("title", "")
+            hit_summary = hit.get("summary", "")
+            lines.append(f"- {node_type}: {title}；{hit_summary}")
+    return "\n".join(lines)
+
+
 def _extract_route_labels(parsed: dict[str, Any]) -> tuple[list[str], bool]:
     """返回 (labels, parse_ok). parse_ok=False 表示 labels 字段不是合法列表."""
     raw = parsed.get("child_labels")
@@ -130,6 +154,15 @@ class DashScopeToolbox:
         self.model = env.get("PRO_MODEL_NAME", "qwen-plus")
         self.max_retries = max_retries
         self.call_count = 0  # 统计 API 调用次数
+        self.graph_rag_error = ""
+        try:
+            self.graph_rag = LeafGraphRagIndex.from_files(
+                "config/settings.json",
+                "data/knowledge.json",
+            )
+        except Exception as exc:
+            self.graph_rag = None
+            self.graph_rag_error = str(exc)
 
     # ── 核心协议方法 ──────────────────────────────────
 
@@ -258,7 +291,12 @@ class DashScopeToolbox:
         return self._route_all(context, node, child_nodes,
                                reason=f"重试 {self.max_retries} 次仍返回非法标签，兜底全选")
 
-    def evaluate_leaf(self, context: AuditContext, node: LabelTreeNode) -> LeafLabelHit:
+    def evaluate_leaf(
+        self,
+        context: AuditContext,
+        node: LabelTreeNode,
+        graph_rag_result: ToolResponse | None = None,
+    ) -> LeafLabelHit:
         """判定单条叶子规则。一次只判一条，prompt 极度聚焦。"""
         text = context.text
 
@@ -271,6 +309,7 @@ class DashScopeToolbox:
             label=node.label,
             name=node.display_name,
             intro=node.description or node.display_name,
+            graph_rag_evidence=_format_graph_rag_evidence(graph_rag_result),
             content=text,
         )
 
@@ -285,6 +324,12 @@ class DashScopeToolbox:
         if not parsed.get("hit", False):
             return self._no_hit(node)
 
+        evidence = [{"type": "model", "content": str(parsed.get("reason", ""))}]
+        if graph_rag_result and graph_rag_result.ok:
+            summary = str(graph_rag_result.data.get("evidence_summary", "")).strip()
+            if summary:
+                evidence.append({"type": "graph_rag", "content": summary})
+
         return LeafLabelHit(
             label=node.label,
             reason=str(parsed.get("reason", f"命中 {node.display_name}")),
@@ -292,7 +337,7 @@ class DashScopeToolbox:
             node_id=node.node_id,
             domain=node.domain,
             path=node.path,
-            evidence=({"type": "model", "content": str(parsed.get("reason", ""))},),
+            evidence=tuple(evidence),
             action=node.default_action,
             action_priority=node.action_priority,
         )
@@ -312,7 +357,24 @@ class DashScopeToolbox:
         return ToolResponse(status="success", data={"label": node.label, "hit": False}, trace_id=context.trace_id)
 
     def graph_rag_search(self, context: AuditContext, labels: list[str]) -> ToolResponse:
-        return ToolResponse(status="success", data={"hits": []}, trace_id=context.trace_id)
+        if self.graph_rag is None:
+            return ToolResponse(
+                status="success",
+                data={
+                    "hits": [],
+                    "paths": [],
+                    "evidence_summary": "Graph RAG 本地索引未加载。",
+                    "index_error": self.graph_rag_error,
+                },
+                trace_id=context.trace_id,
+            )
+        data = self.graph_rag.search(
+            query=context.text,
+            labels=labels,
+            top_k=5,
+            max_depth=2,
+        )
+        return ToolResponse(status="success", data=data, trace_id=context.trace_id)
 
     def audit_trace_lookup(self, trace_id: str) -> ToolResponse:
         return ToolResponse(status="success", data={"audit_trace": []}, trace_id=trace_id)

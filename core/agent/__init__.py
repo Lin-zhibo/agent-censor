@@ -1,4 +1,5 @@
 from .agents import LeafAgent, MultiAgentModerator, RootAgent, TreeAgent
+from .graph_rag import GraphRagEdge, GraphRagNode, LeafGraphRagIndex
 from .rule_tree import build_rule_forest, load_settings_file, normalize_label
 from .schema import (
     AuditContext,
@@ -14,9 +15,12 @@ from .schema import (
 
 __all__ = [
     "AuditContext",
+    "GraphRagEdge",
+    "GraphRagNode",
     "IntermediateAgentResult",
     "LabelTreeNode",
     "LeafAgent",
+    "LeafGraphRagIndex",
     "LeafLabelHit",
     "MultiAgentModerator",
     "NO_ISSUE_REASON",

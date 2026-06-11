@@ -323,7 +323,9 @@ flowchart LR
 - `reason` 是 RootAgent 对各个子智能体 `reason` 的综合洞察。
 - 父智能体不得修改、添加、删除收集到的子智能体标签，包括不改名、不去重、不排序、不新增、不删除。
 
-产生/消费关系：该对象由 RootAgent 产生，由 Decision Service 和 Audit Service 消费；Decision Service 可基于该对象、规则结果、模型结果和 Graph RAG 证据生成 `ModerationResult`。
+产生/消费关系：该对象由 RootAgent 汇总形成，由 Decision Service 和 Audit Service 消费；Decision Service 基于叶子标签结果、规则结果和模型结果生成 `ModerationResult`。
+
+Graph RAG 证据只作为叶子智能体解释和审计材料。
 
 ### 5.6 AuditTrace
 
@@ -548,14 +550,14 @@ Graph RAG 检索结果在内部链路中统称为 `GraphRagEvidence`，由 Graph
 ```json
 {
   "trace_id": "trace_20260604_0001",
-  "query": "PORN SEX_BEHAVIOR",
-  "labels": ["PORN"],
+  "query": "待审核文本",
+  "labels": ["SEX_SERVICE"],
   "evidence": [],
   "policy_id": "default_policy",
   "business_id": "community_post",
   "top_k": 5,
   "max_depth": 2,
-  "node_types": ["Policy", "Case", "Rule", "Label"]
+  "node_types": ["Rule", "Sample", "Keyword", "Label"]
 }
 ```
 
@@ -565,23 +567,26 @@ Graph RAG 检索结果在内部链路中统称为 `GraphRagEvidence`，由 Graph
 {
   "hits": [
     {
-      "node_id": "policy_P001",
-      "node_type": "Policy",
-      "title": "色情内容审核政策",
+      "node_id": "Sample:SEX_SERVICE:003",
+      "node_type": "Sample",
+      "label": "SEX_SERVICE",
+      "title": "SEX_SERVICE sample 3",
       "similarity": 0.87,
       "confidence": 0.81,
-      "summary": "该政策说明色情裸露内容需要进入复核。"
+      "summary": "与色情服务叶子标签样本相似。"
     }
   ],
   "paths": [
     {
-      "path": ["PORN", "Policy:P001", "Rule:rule_model_score_001"],
+      "path": ["Label:SEX_SERVICE", "Sample:SEX_SERVICE:003"],
       "score": 0.84
     }
   ],
-  "evidence_summary": "命中色情内容标签相关政策和规则，建议复核。"
+  "evidence_summary": "召回 SEX_SERVICE 叶子邻域证据：Sample 1、Rule 1、Keyword 2。"
 }
 ```
+
+`labels` 必须是当前叶子智能体对应的单个叶子标签。Graph RAG 返回证据，不直接返回审核命中结论。
 
 ### 8.7 审计轨迹查询
 

@@ -48,7 +48,7 @@ class LeafAgent:
             _log_tool_response(context, self.name, "evaluate_rule", rule_result, self.node)
             rag_result = self.toolbox.graph_rag_search(context, [self.node.label])
             _log_tool_response(context, self.name, "graph_rag_search", rag_result, self.node)
-            result = self.toolbox.evaluate_leaf(context, self.node)
+            result = self.toolbox.evaluate_leaf(context, self.node, rag_result)
             _log_leaf_evaluation(context, self.name, result, self.node)
         except Exception as exc:
             log_agent_event(

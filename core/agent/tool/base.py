@@ -6,7 +6,12 @@ from ..schema import AuditContext, LabelTreeNode, LeafLabelHit, ToolResponse
 
 
 class AgentToolbox(Protocol):
-    def evaluate_leaf(self, context: AuditContext, node: LabelTreeNode) -> LeafLabelHit:
+    def evaluate_leaf(
+        self,
+        context: AuditContext,
+        node: LabelTreeNode,
+        graph_rag_result: ToolResponse | None = None,
+    ) -> LeafLabelHit:
         """Return the leaf label hit contract for one leaf node."""
 
     def route_children(

@@ -1,3 +1,4 @@
+import ast
 import json
 import os
 import tempfile
@@ -7,6 +8,7 @@ from pathlib import Path
 from core.agent import (
     AuditContext,
     LeafLabelHit,
+    LeafGraphRagIndex,
     MultiAgentModerator,
     ToolResponse,
     build_rule_forest,
@@ -17,6 +19,7 @@ from core.agent.logging import reset_agent_logger
 class OrderedToolbox:
     def __init__(self):
         self.calls: list[str] = []
+        self.last_graph_rag_result = None
 
     def route_children(self, context, node, child_nodes):
         self.calls.append("route_children")
@@ -47,7 +50,11 @@ class OrderedToolbox:
 
     def graph_rag_search(self, context, labels):
         self.calls.append("graph_rag_search")
-        return ToolResponse(status="success", data={"hits": [], "paths": []}, trace_id=context.trace_id)
+        return ToolResponse(
+            status="success",
+            data={"hits": [], "paths": [], "evidence_summary": "ordered rag"},
+            trace_id=context.trace_id,
+        )
 
     def audit_trace_lookup(self, trace_id):
         self.calls.append("audit_trace_lookup")
@@ -57,8 +64,9 @@ class OrderedToolbox:
         self.calls.append("threshold_preview")
         return ToolResponse(status="success", data={"preview_only": True}, trace_id=context.trace_id)
 
-    def evaluate_leaf(self, context, node):
+    def evaluate_leaf(self, context, node, graph_rag_result=None):
         self.calls.append("evaluate_leaf")
+        self.last_graph_rag_result = graph_rag_result
         return LeafLabelHit(label=node.label, reason=f"hit {node.label}", domain=node.domain, node_id=node.node_id)
 
 
@@ -86,8 +94,9 @@ class ScriptedToolbox(OrderedToolbox):
             trace_id=context.trace_id,
         )
 
-    def evaluate_leaf(self, context, node):
+    def evaluate_leaf(self, context, node, graph_rag_result=None):
         self.calls.append("evaluate_leaf")
+        self.last_graph_rag_result = graph_rag_result
         if node.label not in self.hit_labels:
             return LeafLabelHit(label="", reason="未检出问题", domain=node.domain, node_id=node.node_id)
         return LeafLabelHit(label=node.label, reason=f"hit {node.label}", domain=node.domain, node_id=node.node_id)
@@ -427,6 +436,118 @@ class MultiAgentModuleTest(unittest.TestCase):
                 "evaluate_leaf",
             ],
         )
+        self.assertIsNotNone(toolbox.last_graph_rag_result)
+        self.assertEqual(
+            toolbox.last_graph_rag_result.data["evidence_summary"],
+            "ordered rag",
+        )
+
+    def test_leaf_graph_rag_builds_leaf_scoped_evidence(self):
+        settings = {
+            "rules": {
+                "security": {
+                    "porn": {
+                        "sex_service": {
+                            "label": "SEX_SERVICE",
+                            "name": "色情服务",
+                        },
+                        "sex_dating": {
+                            "label": "SEX_DATING",
+                            "name": "色情交友",
+                        },
+                    }
+                },
+                "ecosystem": {},
+            }
+        }
+        knowledge = {
+            "rules": {
+                "SEX_SERVICE": {
+                    "label": "SEX_SERVICE",
+                    "introduction": "招嫖、色情按摩、陪侍、上门服务。",
+                    "samples": ["摸摸唱技师全国可飞，先付后做。"],
+                    "keywords": ["摸摸唱", "技师"],
+                },
+                "SEX_DATING": {
+                    "label": "SEX_DATING",
+                    "introduction": "约炮、裸聊等色情交友。",
+                    "samples": ["裸聊约炮。"],
+                    "keywords": ["裸聊"],
+                },
+            }
+        }
+
+        index = LeafGraphRagIndex.from_objects(settings=settings, knowledge=knowledge)
+        data = index.search("摸摸唱技师上门服务", ["SEX_SERVICE"], top_k=5)
+
+        self.assertEqual(index.stats()["labels"], 2)
+        self.assertEqual(index.stats()["keywords"], 3)
+        self.assertGreaterEqual(len(data["hits"]), 1)
+        self.assertTrue(all(hit["label"] == "SEX_SERVICE" for hit in data["hits"]))
+        self.assertTrue(all("Label:SEX_SERVICE" in path["path"][0] for path in data["paths"]))
+        self.assertNotIn("decision", data)
+        self.assertNotIn("matched", data)
+
+    def test_leaf_graph_rag_rejects_non_leaf_or_multi_label_scope(self):
+        settings = {
+            "rules": {
+                "security": {
+                    "porn": {
+                        "sex_service": {"label": "SEX_SERVICE"},
+                    }
+                },
+                "ecosystem": {},
+            }
+        }
+        knowledge = {
+            "rules": {
+                "SEX_SERVICE": {
+                    "label": "SEX_SERVICE",
+                    "introduction": "色情服务。",
+                    "samples": ["上门服务。"],
+                    "keywords": ["技师"],
+                },
+            }
+        }
+
+        index = LeafGraphRagIndex.from_objects(settings=settings, knowledge=knowledge)
+
+        multi = index.search("技师", ["SEX_SERVICE", "PORN"])
+        parent = index.search("技师", ["PORN"])
+
+        self.assertEqual(multi["hits"], [])
+        self.assertTrue(multi["scope"]["leaf_only"])
+        self.assertEqual(parent["hits"], [])
+        self.assertTrue(parent["scope"]["leaf_only"])
+
+    def test_graph_rag_search_is_only_called_by_leaf_agent(self):
+        source = Path("core/agent/agents.py").read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        calls = []
+
+        class Visitor(ast.NodeVisitor):
+            def __init__(self):
+                self.stack = []
+
+            def visit_ClassDef(self, node):
+                self.stack.append(node.name)
+                self.generic_visit(node)
+                self.stack.pop()
+
+            def visit_FunctionDef(self, node):
+                self.stack.append(node.name)
+                self.generic_visit(node)
+                self.stack.pop()
+
+            def visit_Call(self, node):
+                func = node.func
+                if isinstance(func, ast.Attribute) and func.attr == "graph_rag_search":
+                    calls.append(".".join(self.stack))
+                self.generic_visit(node)
+
+        Visitor().visit(tree)
+
+        self.assertEqual(calls, ["LeafAgent.run"])
 
     def test_moderate_writes_readable_agent_log_by_default(self):
         settings = {
