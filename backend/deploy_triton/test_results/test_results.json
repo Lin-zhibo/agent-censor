@@ -1,0 +1,227 @@
+[
+  {
+    "image": "/root/deploy_triton/test_data/00001.jpg",
+    "response": {
+      "status": "success",
+      "data": {
+        "model_name": "kobe_detect_v2",
+        "model_version": "v2.0",
+        "modality": "image",
+        "labels": [
+          {
+            "label": "SAFE",
+            "sub_label": "",
+            "score": 1.8881849616677188e-23,
+            "normalized_score": 1.8881849616677188e-23
+          },
+          {
+            "label": "NEUTRAL",
+            "sub_label": "",
+            "score": 8.059518783930352e-21,
+            "normalized_score": 8.059518783930352e-21
+          },
+          {
+            "label": "HARMFUL",
+            "sub_label": "",
+            "score": 1.0,
+            "normalized_score": 1.0
+          }
+        ],
+        "evidence": [
+          {
+            "evidence_id": "ev_kd_identity",
+            "type": "model_score",
+            "content": "人物识别: 目标人物 (is_target=0.5342)"
+          }
+        ],
+        "latency_ms": 144,
+        "status": "success",
+        "error": null
+      },
+      "errors": [],
+      "latency_ms": 180,
+      "trace_id": "test-00001.jpg"
+    },
+    "latency_ms": 184.1425895690918
+  },
+  {
+    "image": "/root/deploy_triton/test_data/00002.jpg",
+    "response": {
+      "status": "success",
+      "data": {
+        "model_name": "kobe_detect_v2",
+        "model_version": "v2.0",
+        "modality": "image",
+        "labels": [
+          {
+            "label": "SAFE",
+            "sub_label": "",
+            "score": 7.611430191900581e-05,
+            "normalized_score": 7.611430191900581e-05
+          },
+          {
+            "label": "NEUTRAL",
+            "sub_label": "",
+            "score": 0.999923825263977,
+            "normalized_score": 0.999923825263977
+          },
+          {
+            "label": "HARMFUL",
+            "sub_label": "",
+            "score": 7.517130209773237e-17,
+            "normalized_score": 7.517130209773237e-17
+          }
+        ],
+        "evidence": [
+          {
+            "evidence_id": "ev_kd_identity",
+            "type": "model_score",
+            "content": "人物识别: 目标人物 (is_target=0.5246)"
+          }
+        ],
+        "latency_ms": 105,
+        "status": "success",
+        "error": null
+      },
+      "errors": [],
+      "latency_ms": 116,
+      "trace_id": "test-00002.jpg"
+    },
+    "latency_ms": 119.74167823791504
+  },
+  {
+    "image": "/root/deploy_triton/test_data/00003.jpg",
+    "response": {
+      "status": "success",
+      "data": {
+        "model_name": "kobe_detect_v2",
+        "model_version": "v2.0",
+        "modality": "image",
+        "labels": [
+          {
+            "label": "SAFE",
+            "sub_label": "",
+            "score": 1.0,
+            "normalized_score": 1.0
+          },
+          {
+            "label": "NEUTRAL",
+            "sub_label": "",
+            "score": 9.856111760075947e-11,
+            "normalized_score": 9.856111760075947e-11
+          },
+          {
+            "label": "HARMFUL",
+            "sub_label": "",
+            "score": 6.597026641835064e-16,
+            "normalized_score": 6.597026641835064e-16
+          }
+        ],
+        "evidence": [
+          {
+            "evidence_id": "ev_kd_identity",
+            "type": "model_score",
+            "content": "人物识别: 目标人物 (is_target=0.5938)"
+          }
+        ],
+        "latency_ms": 104,
+        "status": "success",
+        "error": null
+      },
+      "errors": [],
+      "latency_ms": 111,
+      "trace_id": "test-00003.jpg"
+    },
+    "latency_ms": 115.03386497497559
+  },
+  {
+    "image": "/root/deploy_triton/test_data/00004.jpg",
+    "response": {
+      "status": "success",
+      "data": {
+        "model_name": "kobe_detect_v2",
+        "model_version": "v2.0",
+        "modality": "image",
+        "labels": [
+          {
+            "label": "SAFE",
+            "sub_label": "",
+            "score": 0.9907201528549194,
+            "normalized_score": 0.9907201528549194
+          },
+          {
+            "label": "NEUTRAL",
+            "sub_label": "",
+            "score": 0.009279869496822357,
+            "normalized_score": 0.009279869496822357
+          },
+          {
+            "label": "HARMFUL",
+            "sub_label": "",
+            "score": 1.850263857143061e-18,
+            "normalized_score": 1.850263857143061e-18
+          }
+        ],
+        "evidence": [
+          {
+            "evidence_id": "ev_kd_identity",
+            "type": "model_score",
+            "content": "人物识别: 目标人物 (is_target=0.5822)"
+          }
+        ],
+        "latency_ms": 111,
+        "status": "success",
+        "error": null
+      },
+      "errors": [],
+      "latency_ms": 116,
+      "trace_id": "test-00004.jpg"
+    },
+    "latency_ms": 119.81010437011719
+  },
+  {
+    "image": "/root/deploy_triton/test_data/00005.jpg",
+    "response": {
+      "status": "success",
+      "data": {
+        "model_name": "kobe_detect_v2",
+        "model_version": "v2.0",
+        "modality": "image",
+        "labels": [
+          {
+            "label": "SAFE",
+            "sub_label": "",
+            "score": 0.999976634979248,
+            "normalized_score": 0.999976634979248
+          },
+          {
+            "label": "NEUTRAL",
+            "sub_label": "",
+            "score": 2.3412476366502233e-05,
+            "normalized_score": 2.3412476366502233e-05
+          },
+          {
+            "label": "HARMFUL",
+            "sub_label": "",
+            "score": 3.3257224014635045e-14,
+            "normalized_score": 3.3257224014635045e-14
+          }
+        ],
+        "evidence": [
+          {
+            "evidence_id": "ev_kd_identity",
+            "type": "model_score",
+            "content": "人物识别: 目标人物 (is_target=0.5934)"
+          }
+        ],
+        "latency_ms": 112,
+        "status": "success",
+        "error": null
+      },
+      "errors": [],
+      "latency_ms": 118,
+      "trace_id": "test-00005.jpg"
+    },
+    "latency_ms": 122.49135971069336
+  }
+]

@@ -1,0 +1,36 @@
+name: "kobe_detect_v2"
+backend: "onnxruntime"
+max_batch_size: 8
+
+input [
+  {
+    name: "pixel_values"
+    data_type: TYPE_FP32
+    dims: [3, 224, 224]
+  }
+]
+
+output [
+  {
+    name: "is_target_logits"
+    data_type: TYPE_FP32
+    dims: [1]
+  },
+  {
+    name: "safety_logits"
+    data_type: TYPE_FP32
+    dims: [3]
+  }
+]
+
+instance_group [
+  {
+    count: 2
+    kind: KIND_GPU
+  }
+]
+
+dynamic_batching {
+  preferred_batch_size: [1, 4, 8]
+  max_queue_delay_microseconds: 50000
+}

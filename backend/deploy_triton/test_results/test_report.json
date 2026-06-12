@@ -1,0 +1,117 @@
+{
+  "test_info": {
+    "test_time": "2026-06-11T17:30:00+08:00",
+    "test_environment": {
+      "server": "root@connect.westd.seetacloud.com:10313",
+      "gpu": "NVIDIA GeForce RTX 5090",
+      "cuda_version": "12.8",
+      "triton_version": "2.51.0 (nvidia-pytriton 0.7.0)",
+      "onnxruntime_version": "1.26.0",
+      "python_version": "3.12"
+    },
+    "model_info": {
+      "model_name": "kobe_detect_v2",
+      "model_version": "v2.0",
+      "backend": "onnxruntime-gpu via pytriton Python backend",
+      "input_shape": [3, 224, 224],
+      "output_names": ["is_target_logits", "safety_logits"]
+    }
+  },
+  "summary": {
+    "total_tests": 5,
+    "passed": 5,
+    "failed": 0,
+    "avg_end_to_end_latency_ms": 132.2,
+    "avg_model_latency_ms": 115.2,
+    "min_latency_ms": 115.0,
+    "max_latency_ms": 184.1
+  },
+  "health_check": {
+    "status": "healthy",
+    "model_loaded": true,
+    "model_name": "kobe_detect_v2",
+    "model_version": "v2.0"
+  },
+  "results": [
+    {
+      "image": "00001.jpg",
+      "trace_id": "test-00001.jpg",
+      "status": "success",
+      "model_latency_ms": 144,
+      "end_to_end_latency_ms": 184.1,
+      "labels": {
+        "SAFE": 0.0,
+        "NEUTRAL": 0.0,
+        "HARMFUL": 1.0
+      },
+      "identity": {
+        "is_target": 0.5342,
+        "identity_str": "目标人物"
+      }
+    },
+    {
+      "image": "00002.jpg",
+      "trace_id": "test-00002.jpg",
+      "status": "success",
+      "model_latency_ms": 105,
+      "end_to_end_latency_ms": 119.7,
+      "labels": {
+        "SAFE": 0.0001,
+        "NEUTRAL": 0.9999,
+        "HARMFUL": 0.0
+      },
+      "identity": {
+        "is_target": 0.5246,
+        "identity_str": "目标人物"
+      }
+    },
+    {
+      "image": "00003.jpg",
+      "trace_id": "test-00003.jpg",
+      "status": "success",
+      "model_latency_ms": 104,
+      "end_to_end_latency_ms": 115.0,
+      "labels": {
+        "SAFE": 1.0,
+        "NEUTRAL": 0.0,
+        "HARMFUL": 0.0
+      },
+      "identity": {
+        "is_target": 0.5938,
+        "identity_str": "目标人物"
+      }
+    },
+    {
+      "image": "00004.jpg",
+      "trace_id": "test-00004.jpg",
+      "status": "success",
+      "model_latency_ms": 111,
+      "end_to_end_latency_ms": 119.8,
+      "labels": {
+        "SAFE": 0.9907,
+        "NEUTRAL": 0.0093,
+        "HARMFUL": 0.0
+      },
+      "identity": {
+        "is_target": 0.5822,
+        "identity_str": "目标人物"
+      }
+    },
+    {
+      "image": "00005.jpg",
+      "trace_id": "test-00005.jpg",
+      "status": "success",
+      "model_latency_ms": 112,
+      "end_to_end_latency_ms": 122.5,
+      "labels": {
+        "SAFE": 1.0,
+        "NEUTRAL": 0.0,
+        "HARMFUL": 0.0
+      },
+      "identity": {
+        "is_target": 0.5934,
+        "identity_str": "目标人物"
+      }
+    }
+  ]
+}
