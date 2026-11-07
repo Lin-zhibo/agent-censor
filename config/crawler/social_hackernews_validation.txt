@@ -1,0 +1,8 @@
+# Hacker News: 社交新闻和评论页。
+# robots.txt 指定 Crawl-delay: 30，运行时务必使用 --min-delay 30 --max-delay 45。
+# 适合英文用户生成内容、争议讨论、链接评论类审核实验。
+https://news.ycombinator.com/
+https://news.ycombinator.com/newest
+https://news.ycombinator.com/front
+https://news.ycombinator.com/ask
+https://news.ycombinator.com/show

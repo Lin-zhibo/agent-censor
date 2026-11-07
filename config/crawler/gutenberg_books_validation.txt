@@ -1,0 +1,3 @@
+# Project Gutenberg 官方 robot harvest 入口。
+# 建议 --max-depth 1，让脚本从索引页跟进到 txt 文件；采集后人工剔除索引页样本。
+https://www.gutenberg.org/robot/harvest?filetypes[]=txt&langs[]=en

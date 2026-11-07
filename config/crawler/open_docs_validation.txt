@@ -1,0 +1,9 @@
+# 开放技术文档页面。适合技术文本、说明文、知识问答类验证集。
+https://developer.mozilla.org/zh-CN/docs/Web/JavaScript
+https://developer.mozilla.org/zh-CN/docs/Web/HTTP
+https://developer.mozilla.org/zh-CN/docs/Web/HTML
+https://developer.mozilla.org/zh-CN/docs/Web/CSS
+https://docs.python.org/3/tutorial/index.html
+https://docs.python.org/3/library/json.html
+https://docs.python.org/3/library/urllib.request.html
+https://docs.python.org/3/howto/regex.html

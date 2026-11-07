@@ -1,0 +1,9 @@
+# Fediverse / 去中心化社交平台公开页。
+# Mastodon 部分页是前端渲染，可能抽取文本较少；Lemmy 更接近论坛/社交新闻。
+# 运行前仍由脚本检查 robots；建议 --max-depth 1、低速采集。
+https://lemmy.world/
+https://lemmy.world/c/technology
+https://lemmy.world/c/world
+https://mastodon.social/explore
+https://mastodon.social/tags/technology
+https://mastodon.social/tags/news

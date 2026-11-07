@@ -1,0 +1,7 @@
+# arXiv 摘要页。robots 要求较慢访问，建议 --min-delay 15 --max-delay 20。
+# 适合英文论文摘要、技术长句验证集。
+https://arxiv.org/abs/1706.03762
+https://arxiv.org/abs/1810.04805
+https://arxiv.org/abs/2005.14165
+https://arxiv.org/abs/1512.03385
+https://arxiv.org/abs/1409.1556

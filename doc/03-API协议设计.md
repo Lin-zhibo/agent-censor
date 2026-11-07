@@ -13,7 +13,7 @@
 - 使用 `modality` 区分文本、图片、视频、音频等内容模态。
 - 使用 `policy_id` 和 `version` 管理策略版本。
 - 使用 `trace_id` 串联请求、模型、规则、RAG 证据和处置结果。
-- 标签字段值统一使用大写英文单词，限制为 1 个 word，例如 `SECURITY`、`PORN`、`NUDITY`；中文名称和说明放在展示名或描述字段中。
+- 标签字段值统一使用大写英文，限制为 1-2 个 word；多个 word 使用下划线连接，例如 `SECURITY`、`PORN`、`SUPPORT_SUICIDE`。不使用连字符或中文。常见前缀如 `ECO`、`AD`、`TERROR` 按 1 个 word 计算；中文名称和说明放在展示名或描述字段中。
 
 ## 3. 各层模块骨架
 
@@ -184,12 +184,12 @@ flowchart LR
 ```json
 {
   "task_id": "task_0001",
-  "decision": "review",
+  "decision": "ban",
   "risk_score": 0.82,
   "labels": [
     {
         "label": "PORN",
-        "sub_label": "NUDITY",
+        "sub_label": "SEX_BEHAVIOR",
       "score": 0.82
     }
   ],
@@ -210,7 +210,7 @@ flowchart LR
       "labels": [
         {
             "label": "PORN",
-            "sub_label": "NUDITY",
+            "sub_label": "SEX_BEHAVIOR",
           "score": 0.82,
           "normalized_score": 0.82
         }
@@ -229,7 +229,7 @@ flowchart LR
   ],
   "rule_results": [
     {
-        "rule_id": "rule_porn_nudity_001",
+        "rule_id": "rule_porn_behavior_001",
       "version": "v1",
         "label": "PORN",
       "condition_type": "model_score",
@@ -238,23 +238,22 @@ flowchart LR
       "matched": true,
       "action": "review",
       "evidence_refs": ["ev_text_001"],
-        "reason": "模型 PORN/NUDITY 分数 0.82 超过阈值 0.8"
+        "reason": "模型 PORN/SEX_BEHAVIOR 分数 0.82 超过阈值 0.8"
     }
   ],
-  "suggested_action": "manual_review",
-    "explanation": "规则和模型均提示存在色情内容风险，建议人工复核。"
+  "decision": "ban",
+    "explanation": "安全域命中 PORN/SEX_BEHAVIOR，执行封禁处置。"
 }
 ```
 
 字段说明：
 
-- `decision`：`pass`、`review`、`reject`。
+- `decision`：`ban`、`limit`、`pass`。命中 security → ban，命中 ecosystem → limit，未命中 → pass。
 - `risk_score`：综合风险分数，范围 0 到 1。
 - `labels`：详细标签和分数。
 - `evidence`：证据片段、检测框、视频时间段或 RAG 证据。
 - `model_results`：模型推理结果。
 - `rule_results`：规则命中结果。
-- `suggested_action`：建议处置动作，例如 `manual_review`、`block`、`pass_with_limit`。
 
 产生/消费关系：`ModerationResult` 由 Decision Service 产生，由 API Controller 返回给前端或外部系统；同步任务直接返回，异步任务通过 `GET /api/v1/moderation/tasks/{task_id}` 查询返回。
 
@@ -324,7 +323,9 @@ flowchart LR
 - `reason` 是 RootAgent 对各个子智能体 `reason` 的综合洞察。
 - 父智能体不得修改、添加、删除收集到的子智能体标签，包括不改名、不去重、不排序、不新增、不删除。
 
-产生/消费关系：该对象由 RootAgent 产生，由 Decision Service 和 Audit Service 消费；Decision Service 可基于该对象、规则结果、模型结果和 Graph RAG 证据生成 `ModerationResult`。
+产生/消费关系：该对象由 RootAgent 汇总形成，由 Decision Service 和 Audit Service 消费；Decision Service 基于叶子标签结果、规则结果和模型结果生成 `ModerationResult`。
+
+Graph RAG 证据只作为叶子智能体解释和审计材料。
 
 ### 5.6 AuditTrace
 
@@ -462,7 +463,7 @@ Graph RAG 检索结果在内部链路中统称为 `GraphRagEvidence`，由 Graph
   "labels": [
     {
       "label": "PORN",
-      "sub_label": "NUDITY",
+      "sub_label": "SEX_BEHAVIOR",
       "score": 0.82,
       "normalized_score": 0.82
     }
@@ -549,14 +550,14 @@ Graph RAG 检索结果在内部链路中统称为 `GraphRagEvidence`，由 Graph
 ```json
 {
   "trace_id": "trace_20260604_0001",
-  "query": "PORN NUDITY",
-  "labels": ["PORN"],
+  "query": "待审核文本",
+  "labels": ["SEX_SERVICE"],
   "evidence": [],
   "policy_id": "default_policy",
   "business_id": "community_post",
   "top_k": 5,
   "max_depth": 2,
-  "node_types": ["Policy", "Case", "Rule", "Label"]
+  "node_types": ["Rule", "Sample", "Keyword", "Label"]
 }
 ```
 
@@ -566,23 +567,26 @@ Graph RAG 检索结果在内部链路中统称为 `GraphRagEvidence`，由 Graph
 {
   "hits": [
     {
-      "node_id": "policy_P001",
-      "node_type": "Policy",
-      "title": "色情内容审核政策",
+      "node_id": "Sample:SEX_SERVICE:003",
+      "node_type": "Sample",
+      "label": "SEX_SERVICE",
+      "title": "SEX_SERVICE sample 3",
       "similarity": 0.87,
       "confidence": 0.81,
-      "summary": "该政策说明色情裸露内容需要进入复核。"
+      "summary": "与色情服务叶子标签样本相似。"
     }
   ],
   "paths": [
     {
-      "path": ["PORN", "Policy:P001", "Rule:rule_model_score_001"],
+      "path": ["Label:SEX_SERVICE", "Sample:SEX_SERVICE:003"],
       "score": 0.84
     }
   ],
-  "evidence_summary": "命中色情内容标签相关政策和规则，建议复核。"
+  "evidence_summary": "召回 SEX_SERVICE 叶子邻域证据：Sample 1、Rule 1、Keyword 2。"
 }
 ```
+
+`labels` 必须是当前叶子智能体对应的单个叶子标签。Graph RAG 返回证据，不直接返回审核命中结论。
 
 ### 8.7 审计轨迹查询
 
@@ -609,4 +613,4 @@ Graph RAG 检索结果在内部链路中统称为 `GraphRagEvidence`，由 Graph
 }
 ```
 
-响应 `ToolResponse.data` 返回预览后的 `decision`、`risk_score`、`labels`、`rule_results` 和 `suggested_action`，不写入正式审核结果。
+响应 `ToolResponse.data` 返回预览后的 `decision`、`risk_score`、`labels` 和 `rule_results`，不写入正式审核结果。
